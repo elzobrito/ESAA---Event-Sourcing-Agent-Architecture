@@ -8,9 +8,9 @@
   "run": {
     "run_id": "RUN-0001",
     "status": "initialized",
-    "last_event_seq": 0,
-    "last_event_ts": "2026-02-21T23:59:00-03:00",
-    "projection_hash_sha256": "",
+    "last_event_seq": 1,
+    "last_event_ts": "2026-02-21T09:30:00-03:00",
+    "projection_hash_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
     "verify_status": "unknown"
   },
   "tasks": [
@@ -20,18 +20,13 @@
       "title": "Spec: Escopo e páginas da landing page",
       "state": "todo",
       "depends_on": [],
-      "files": [".roadmap/specs/landingpage_scope_v1.md"],
+      "files": [
+        ".roadmap/specs/landingpage_scope_v1.md"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1000-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     },
     {
@@ -39,19 +34,16 @@
       "kind": "spec",
       "title": "Spec: Conteúdo, copy e estrutura",
       "state": "todo",
-      "depends_on": ["T-1000"],
-      "files": [".roadmap/specs/landingpage_content_v1.md"],
+      "depends_on": [
+        "T-1000"
+      ],
+      "files": [
+        ".roadmap/specs/landingpage_content_v1.md"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1010-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     },
     {
@@ -59,19 +51,16 @@
       "kind": "spec",
       "title": "Spec: Contratos de UI",
       "state": "todo",
-      "depends_on": ["T-1010"],
-      "files": [".roadmap/specs/landingpage_ui_contract_v1.md"],
+      "depends_on": [
+        "T-1010"
+      ],
+      "files": [
+        ".roadmap/specs/landingpage_ui_contract_v1.md"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1020-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     },
     {
@@ -79,19 +68,16 @@
       "kind": "spec",
       "title": "Spec: Eventos/telemetria e formulário",
       "state": "todo",
-      "depends_on": ["T-1010"],
-      "files": [".roadmap/specs/landingpage_form_telemetry_v1.md"],
+      "depends_on": [
+        "T-1010"
+      ],
+      "files": [
+        ".roadmap/specs/landingpage_form_telemetry_v1.md"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1030-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     },
     {
@@ -99,19 +85,19 @@
       "kind": "impl",
       "title": "Impl: Estrutura base",
       "state": "todo",
-      "depends_on": ["T-1020", "T-1030"],
-      "files": ["src/index.html", "src/styles.css", "src/app.js"],
+      "depends_on": [
+        "T-1020",
+        "T-1030"
+      ],
+      "files": [
+        "src/index.html",
+        "src/styles.css",
+        "src/app.js"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1100-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     },
     {
@@ -119,19 +105,18 @@
       "kind": "impl",
       "title": "Impl: Seções e CTA final",
       "state": "todo",
-      "depends_on": ["T-1100"],
-      "files": ["src/index.html", "src/styles.css", "src/app.js"],
+      "depends_on": [
+        "T-1100"
+      ],
+      "files": [
+        "src/index.html",
+        "src/styles.css",
+        "src/app.js"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1110-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     },
     {
@@ -139,19 +124,18 @@
       "kind": "impl",
       "title": "Impl: Formulário + telemetria",
       "state": "todo",
-      "depends_on": ["T-1110"],
-      "files": ["src/index.html", "src/styles.css", "src/app.js"],
+      "depends_on": [
+        "T-1110"
+      ],
+      "files": [
+        "src/index.html",
+        "src/styles.css",
+        "src/app.js"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1120-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     },
     {
@@ -159,19 +143,17 @@
       "kind": "qa",
       "title": "QA: Checklist + critérios de aceite",
       "state": "todo",
-      "depends_on": ["T-1120"],
-      "files": [".roadmap/qa/landingpage_checklist_v1.md", ".roadmap/qa/landingpage_acceptance_results_v1.md"],
+      "depends_on": [
+        "T-1120"
+      ],
+      "files": [
+        ".roadmap/qa/landingpage_checklist_v1.md",
+        ".roadmap/qa/landingpage_acceptance_results_v1.md"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1200-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     },
     {
@@ -179,33 +161,52 @@
       "kind": "qa",
       "title": "QA: Verificação final ESAA",
       "state": "todo",
-      "depends_on": ["T-1200"],
-      "files": [".roadmap/qa/esaa_verify_report_v1.md"],
+      "depends_on": [
+        "T-1200"
+      ],
+      "files": [
+        ".roadmap/qa/esaa_verify_report_v1.md"
+      ],
       "current_attempt_id": null,
-      "attempts": ["A-T-1210-01"],
+      "attempts": [],
       "issues_open": [],
       "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
       "done_ts": null
     }
   ],
   "indexes": {
     "by_state": {
-      "todo": ["T-1000","T-1010","T-1020","T-1030","T-1100","T-1110","T-1120","T-1200","T-1210"],
+      "todo": [
+        "T-1000",
+        "T-1010",
+        "T-1020",
+        "T-1030",
+        "T-1100",
+        "T-1110",
+        "T-1120",
+        "T-1200",
+        "T-1210"
+      ],
       "in_progress": [],
       "blocked": [],
       "done": []
     },
     "by_kind": {
-      "spec": ["T-1000","T-1010","T-1020","T-1030"],
-      "impl": ["T-1100","T-1110","T-1120"],
-      "qa": ["T-1200","T-1210"],
+      "spec": [
+        "T-1000",
+        "T-1010",
+        "T-1020",
+        "T-1030"
+      ],
+      "impl": [
+        "T-1100",
+        "T-1110",
+        "T-1120"
+      ],
+      "qa": [
+        "T-1200",
+        "T-1210"
+      ],
       "emergency_patch": []
     }
   }
