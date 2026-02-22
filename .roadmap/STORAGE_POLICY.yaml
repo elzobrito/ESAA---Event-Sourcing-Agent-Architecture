@@ -1,0 +1,6 @@
+version: "0.3.0"
+
+event_store:
+  path: ".roadmap/activity.jsonl"
+  format: "jsonl"
+  append_only: true

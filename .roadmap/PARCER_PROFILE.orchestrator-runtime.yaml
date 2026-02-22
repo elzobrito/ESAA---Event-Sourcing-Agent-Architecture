@@ -1,0 +1,94 @@
+# .roadmap/PARCER_PROFILE.orchestrator-runtime.yaml
+# ===========================================================
+# PARCER_PROFILE: orchestrator-runtime (ESAA v0.3.0)
+# O “run/verify” está definido como contrato operacional do MOTOR.
+# ===========================================================
+
+parcer_profile:
+  id: "orchestrator-runtime.esaa"
+  version: "0.3.0"
+  locale: "pt-BR"
+  timezone: "America/Sao_Paulo"
+
+runtime_actor:
+  role: "orchestrator-runtime: motor determinístico do ESAA (coordenação + validação + projeção)."
+  principles:
+    - "O LLM não é fonte de verdade; é um produtor de propostas."
+    - "Nenhum efeito sem evento; nenhum evento sem validação; nenhum estado sem projeção; nenhuma projeção sem verify."
+    - "Fail-closed sempre."
+
+io:
+  inputs:
+    root: "Path do projeto (ex.: .)"
+    event_store: ".roadmap/activity.jsonl"
+    read_model: ".roadmap/roadmap.json"
+    contracts:
+      agent: ".roadmap/AGENT_CONTRACT.yaml"
+      orchestrator: ".roadmap/ORCHESTRATOR_CONTRACT.yaml"
+      runtime_policy: ".roadmap/RUNTIME_POLICY.yaml"
+      storage_policy: ".roadmap/STORAGE_POLICY.yaml"
+      projection_spec: ".roadmap/PROJECTION_SPEC.md"
+      agents_registry: ".roadmap/agents_swarm.yaml"
+
+commands:
+  esaa_run:
+    synopsis: "Executa N passos de pipeline (seleção → attempt → dispatch → validate → effects → project → run.end)."
+    args:
+      steps: { type: integer, default: 1, min: 1, max: 100 }
+      run_id: { type: string, required: true }
+      correlation_id: { type: string, required: true }
+      dry_run: { type: boolean, default: false }
+    deterministic_steps:
+      - "load_read_model"
+      - "select_next_eligible_task"
+      - "append attempt.create"
+      - "emit orchestrator.dispatch"
+      - "invoke agent via agents_swarm resolution"
+      - "validate_agent_output (strict JSON + schema + authority + semantics)"
+      - "on_accept: emit orchestrator.file.write / orchestrator.view.mutate as needed"
+      - "on_accept: emit task.update (done) when criteria satisfied"
+      - "project events to rebuild roadmap.json"
+      - "emit run.end with status per runtime_policy"
+    required_events_on_accept:
+      - "attempt.create"
+      - "orchestrator.dispatch"
+      - "orchestrator.file.write"
+      - "task.update"
+      - "run.end"
+    required_events_on_reject:
+      - "attempt.create"
+      - "orchestrator.dispatch"
+      - "output.rejected"
+      - "run.end"
+
+  esaa_verify:
+    synopsis: "Reexecução determinística do event store e comparação com read-model materializado."
+    args:
+      strict: { type: boolean, default: true }
+    deterministic_steps:
+      - "parse_jsonl_strict"
+      - "dedupe_by_event_id"
+      - "validate_monotonic_event_seq"
+      - "project(events) per PROJECTION_SPEC"
+      - "canonicalize_json"
+      - "sha256(projected)"
+      - "compare with roadmap.json"
+    outputs:
+      verify_status_enum: ["ok","mismatch","corrupted"]
+      fields:
+        - "verify_status"
+        - "last_event_seq"
+        - "projection_hash_sha256"
+
+output_contract:
+  for_esaa_run:
+    type: "object"
+    required_keys: ["run_id","steps_executed","selected_task_id","attempt_id","validation","effects_applied_count","last_event_seq","verify_status"]
+  for_esaa_verify:
+    type: "object"
+    required_keys: ["verify_status","last_event_seq","projection_hash_sha256"]
+
+invariants:
+  - "Nunca mutar task done."
+  - "Nunca aplicar efeito antes de validação accepted."
+  - "Sempre rodar project/verify após efeitos quando dry_run=false."

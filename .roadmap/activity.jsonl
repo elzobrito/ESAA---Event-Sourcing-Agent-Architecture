@@ -1,0 +1,3 @@
+{"schema_version":"0.3.0","event_id":"EV-00000001","event_seq":1,"ts":"2026-02-21T09:43:00-03:00","actor":"orchestrator","action":"run.init","payload":{"run_id":"RUN-0001","status":"initialized"}}
+{"schema_version":"0.3.0","event_id":"EV-00000002","event_seq":2,"ts":"2026-02-21T09:43:05-03:00","actor":"orchestrator","action":"attempt.create","payload":{"task_id":"T-1000","attempt_id":"A-T-1000-01"}}
+{"schema_version":"0.3.0","event_id":"EV-00000003","event_seq":3,"ts":"2026-02-21T09:43:10-03:00","actor":"orchestrator","action":"orchestrator.dispatch","payload":{"task_id":"T-1000","attempt_id":"A-T-1000-01","actor":"agent-spec","template":"spec.generic"}}
