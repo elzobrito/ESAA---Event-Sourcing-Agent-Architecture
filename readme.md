@@ -4,7 +4,7 @@
 
 ESAA is an architecture for orchestrating autonomous LLM-based agents in software engineering workflows. It applies the [Event Sourcing](https://www.elzobrito.com/esaa/) pattern to the agent lifecycle: the source of truth is an **immutable append-only event log**, not the current repository snapshot. Every intention, decision, and effect is recorded as a fact, and the current project state is **deterministically projected** from that log.
 
-📄 **Paper:** [ESAA: Event Sourcing for Autonomous Agents in LLM-Based Software Engineering](link-to-arxiv) *(preprint)*
+📄 **Paper:** [ESAA: Event Sourcing for Autonomous Agents in LLM-Based Software Engineering](https://arxiv.org/pdf/2602.23193) *(preprint)*
 
 ---
 
