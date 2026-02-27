@@ -1,6 +1,16 @@
-version: "0.3.0"
+version: "0.4.0"
 
 event_store:
   path: ".roadmap/activity.jsonl"
   format: "jsonl"
   append_only: true
+  strict_newline_per_event: true
+  required_fields:
+    - schema_version
+    - event_id
+    - event_seq
+    - ts
+    - actor
+    - action
+    - payload
+

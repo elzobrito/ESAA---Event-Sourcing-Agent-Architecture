@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "esaa-core"
+version = "0.4.0"
+description = "ESAA deterministic orchestrator core"
+readme = "readme.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0",
+  "jsonschema>=4.22.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+]
+
+[project.scripts]
+esaa = "esaa.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

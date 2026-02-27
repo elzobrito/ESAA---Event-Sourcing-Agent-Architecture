@@ -257,23 +257,23 @@ Agents are resolved by task kind. The orchestrator dispatches tasks and tracks a
 ```
 
 ---
+
 ## Case Studies
 
-The architecture has been validated in three case studies:
+The architecture has been validated in two case studies:
 
-| Metric | Landing Page | ESAA-calc (Python GUI Calculator) | Clinic ASR |
-|---|---|---|---|
-| Tasks | 9 | 11 | 50 |
-| Events | 49 | 48 | 86 |
-| Agents | 3 (composition) | 3 (composition) | 4 (concurrent) |
-| Phases | 1 pipeline | 1 pipeline | 15 (8 completed) |
-| Components | 3 (spec/impl/QA) | 5 (engine, GUI, tests, config, docs) | 7 (DB, API, UI, tests, config, obs, docs) |
-| `output.rejected` | 0 | 0 | 0 |
-| `verify_status` | ok | ok | ok |
-| Concurrent claims | No | No | Yes (6 in 1 min) |
+| Metric | Landing Page | Clinic ASR |
+|---|---|---|
+| Tasks | 9 | 50 |
+| Events | 49 | 86 |
+| Agents | 3 (composition) | 4 (concurrent) |
+| Phases | 1 pipeline | 15 (8 completed) |
+| Components | 3 (spec/impl/QA) | 7 (DB, API, UI, tests, config, obs, docs) |
+| `output.rejected` | 0 | 0 |
+| `verify_status` | ok | ok |
+| Concurrent claims | No | Yes (6 in 1 min) |
 
-This repository contains the **landing page** case study in its clean state (only `run.init` in the event store), allowing full pipeline reproduction from scratch.  
-It also contains **ESAA-calc** as a fully executed reference run (48 events, `verify.ok`, finalized projection hash), useful as a “known-good” audit target and replay baseline.
+This repository contains the **landing page** case study in its clean state (only `run.init` in the event store), allowing full pipeline reproduction from scratch.
 
 ---
 
@@ -346,4 +346,3 @@ MIT
 
 **Elzo Brito dos Santos Filho**
 📧 elzo.santos@cps.sp.gov.br
-

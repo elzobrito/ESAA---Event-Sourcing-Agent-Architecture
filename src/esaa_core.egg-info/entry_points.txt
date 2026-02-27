@@ -1,0 +1,2 @@
+[console_scripts]
+esaa = esaa.cli:main

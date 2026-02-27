@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esaa.local/schemas/issues.schema.json",
+  "title": "ESAA Issues Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meta", "issues", "indexes"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "esaa_version", "generated_by", "source_event_store", "last_event_seq", "updated_at"],
+      "properties": {
+        "schema_version": {
+          "const": "0.4.0"
+        },
+        "esaa_version": {
+          "type": "string"
+        },
+        "generated_by": {
+          "type": "string"
+        },
+        "source_event_store": {
+          "type": "string"
+        },
+        "last_event_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issue_id", "status", "severity", "title", "evidence", "links", "timeline"],
+        "properties": {
+          "issue_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "resolved", "closed"]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseline_id": {
+            "type": ["string", "null"]
+          },
+          "affected": {
+            "type": "object"
+          },
+          "evidence": {
+            "type": "object",
+            "required": ["symptom", "repro_steps"],
+            "properties": {
+              "symptom": {
+                "type": "string"
+              },
+              "repro_steps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "resolution": {
+            "type": ["object", "null"]
+          },
+          "links": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reported_by_task_id", "fixes_task_id", "hotfix_task_id"],
+            "properties": {
+              "reported_by_task_id": {
+                "type": ["string", "null"]
+              },
+              "fixes_task_id": {
+                "type": ["string", "null"]
+              },
+              "hotfix_task_id": {
+                "type": ["string", "null"]
+              }
+            }
+          },
+          "timeline": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["created_event_seq", "resolved_event_seq"],
+            "properties": {
+              "created_event_seq": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "resolved_event_seq": {
+                "type": ["integer", "null"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "indexes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["open_by_baseline"],
+      "properties": {
+        "open_by_baseline": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

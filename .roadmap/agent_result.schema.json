@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esaa.local/schemas/agent_result.schema.json",
+  "title": "ESAA Agent Result Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["activity_event"],
+  "properties": {
+    "activity_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "task_id"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["claim", "complete", "review", "issue.report"]
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "type": "string"
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["checks"],
+          "properties": {
+            "checks": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          }
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["approve", "request_changes"]
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "issue_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fixes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string"
+        },
+        "subtype": {
+          "type": "string"
+        },
+        "affected": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "baseline_id": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["symptom", "repro_steps"],
+          "properties": {
+            "symptom": {
+              "type": "string",
+              "minLength": 1
+            },
+            "repro_steps": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          }
+        },
+        "lesson": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mistake", "rule", "scope", "enforcement"],
+          "properties": {
+            "mistake": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rule": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["task_kinds"],
+              "properties": {
+                "task_kinds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["spec", "impl", "qa"]
+                  },
+                  "minItems": 1
+                }
+              }
+            },
+            "enforcement": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mode", "applies_to"],
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": ["reject", "warn", "require_field", "require_step"]
+                },
+                "applies_to": {
+                  "type": "string",
+                  "enum": ["output_contract", "boundaries", "template", "workflow_gate", "verification_gate"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "review"
+              }
+            },
+            "required": ["action"]
+          },
+          "then": {
+            "required": ["decision", "tasks"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "issue.report"
+              }
+            },
+            "required": ["action"]
+          },
+          "then": {
+            "required": ["issue_id", "severity", "title", "evidence"]
+          }
+        }
+      ]
+    },
+    "file_updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "content"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+

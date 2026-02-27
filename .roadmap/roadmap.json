@@ -1,212 +1,93 @@
 {
-  "schema_version": "0.3.0",
-  "project": {
-    "name": "example-landingpage",
-    "created_at": "2026-02-20T00:00:00-03:00",
-    "audit_scope": ".roadmap/"
+  "meta": {
+    "schema_version": "0.4.0",
+    "esaa_version": "0.4.x",
+    "immutable_done": true,
+    "master_correlation_id": "CID-ESAA-INIT",
+    "run": {
+      "run_id": "RUN-0001",
+      "status": "initialized",
+      "last_event_seq": 6,
+      "projection_hash_sha256": "7f32d838c797f55429b11483f163a1cdcf12cb75e335ebb96f0202b07dc26014",
+      "verify_status": "ok"
+    },
+    "updated_at": "2026-02-27T01:25:22Z"
   },
-  "run": {
-    "run_id": "RUN-0001",
-    "status": "initialized",
-    "last_event_seq": 0,
-    "last_event_ts": "2026-02-21T23:59:00-03:00",
-    "projection_hash_sha256": "",
-    "verify_status": "unknown"
+  "project": {
+    "name": "esaa-core",
+    "audit_scope": ".roadmap/"
   },
   "tasks": [
     {
       "task_id": "T-1000",
-      "kind": "spec",
-      "title": "Spec: Escopo e páginas da landing page",
-      "state": "todo",
+      "task_kind": "spec",
+      "title": "Create initial ESAA spec document",
+      "description": "Produce the initial specification artifact for the ESAA core baseline.",
+      "status": "todo",
       "depends_on": [],
-      "files": [".roadmap/specs/landingpage_scope_v1.md"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1000-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
+      "targets": [
+        "spec-core"
+      ],
+      "outputs": {
+        "files": [
+          "docs/spec/T-1000.md"
+        ]
+      },
+      "immutability": {
+        "done_is_immutable": true
+      }
     },
     {
       "task_id": "T-1010",
-      "kind": "spec",
-      "title": "Spec: Conteúdo, copy e estrutura",
-      "state": "todo",
-      "depends_on": ["T-1000"],
-      "files": [".roadmap/specs/landingpage_content_v1.md"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1010-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
+      "task_kind": "impl",
+      "title": "Create initial implementation artifact",
+      "description": "Produce the initial implementation artifact that follows the approved specification.",
+      "status": "todo",
+      "depends_on": [
+        "T-1000"
+      ],
+      "targets": [
+        "impl-core"
+      ],
+      "outputs": {
+        "files": [
+          "src/T-1010.txt"
+        ]
+      },
+      "immutability": {
+        "done_is_immutable": true
+      }
     },
     {
       "task_id": "T-1020",
-      "kind": "spec",
-      "title": "Spec: Contratos de UI",
-      "state": "todo",
-      "depends_on": ["T-1010"],
-      "files": [".roadmap/specs/landingpage_ui_contract_v1.md"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1020-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
-    },
-    {
-      "task_id": "T-1030",
-      "kind": "spec",
-      "title": "Spec: Eventos/telemetria e formulário",
-      "state": "todo",
-      "depends_on": ["T-1010"],
-      "files": [".roadmap/specs/landingpage_form_telemetry_v1.md"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1030-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
-    },
-    {
-      "task_id": "T-1100",
-      "kind": "impl",
-      "title": "Impl: Estrutura base",
-      "state": "todo",
-      "depends_on": ["T-1020", "T-1030"],
-      "files": ["src/index.html", "src/styles.css", "src/app.js"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1100-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
-    },
-    {
-      "task_id": "T-1110",
-      "kind": "impl",
-      "title": "Impl: Seções e CTA final",
-      "state": "todo",
-      "depends_on": ["T-1100"],
-      "files": ["src/index.html", "src/styles.css", "src/app.js"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1110-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
-    },
-    {
-      "task_id": "T-1120",
-      "kind": "impl",
-      "title": "Impl: Formulário + telemetria",
-      "state": "todo",
-      "depends_on": ["T-1110"],
-      "files": ["src/index.html", "src/styles.css", "src/app.js"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1120-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
-    },
-    {
-      "task_id": "T-1200",
-      "kind": "qa",
-      "title": "QA: Checklist + critérios de aceite",
-      "state": "todo",
-      "depends_on": ["T-1120"],
-      "files": [".roadmap/qa/landingpage_checklist_v1.md", ".roadmap/qa/landingpage_acceptance_results_v1.md"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1200-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
-    },
-    {
-      "task_id": "T-1210",
-      "kind": "qa",
-      "title": "QA: Verificação final ESAA",
-      "state": "todo",
-      "depends_on": ["T-1200"],
-      "files": [".roadmap/qa/esaa_verify_report_v1.md"],
-      "current_attempt_id": null,
-      "attempts": ["A-T-1210-01"],
-      "issues_open": [],
-      "superseded_by": null,
-      "todo_ts": "2026-02-21T09:30:00-03:00",
-      "assigned_to": null,
-      "assigned_to_name": null,
-      "assigned_to_model": null,
-      "completed_by": null,
-      "completed_by_name": null,
-      "completed_by_model": null,
-      "done_ts": null
+      "task_kind": "qa",
+      "title": "Create initial QA report",
+      "description": "Produce the initial QA evidence artifact validating the implementation baseline.",
+      "status": "todo",
+      "depends_on": [
+        "T-1010"
+      ],
+      "targets": [
+        "qa-core"
+      ],
+      "outputs": {
+        "files": [
+          "docs/qa/T-1020.md"
+        ]
+      },
+      "immutability": {
+        "done_is_immutable": true
+      }
     }
   ],
   "indexes": {
-    "by_state": {
-      "todo": ["T-1000","T-1010","T-1020","T-1030","T-1100","T-1110","T-1120","T-1200","T-1210"],
-      "in_progress": [],
-      "blocked": [],
-      "done": []
+    "by_status": {
+      "todo": 3
     },
     "by_kind": {
-      "spec": ["T-1000","T-1010","T-1020","T-1030"],
-      "impl": ["T-1100","T-1110","T-1120"],
-      "qa": ["T-1200","T-1210"],
-      "emergency_patch": []
+      "impl": 1,
+      "qa": 1,
+      "spec": 1
     }
   }
 }

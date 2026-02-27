@@ -1,111 +1,88 @@
-version: 0.3.0
 meta:
-  name: ESAA Orchestrator Contract
-  actor: orchestrator
-  trust_model: verify_and_audit
-  canonical_repo: .roadmap/
+  contract_version: "0.4.0"
+  esaa_version: "0.4.x"
+  canonical: true
+  fail_closed: true
 
-capabilities:
-  may_emit_events:
-    - run.init
-    - task.create
-    - task.update
-    - attempt.create
-    - attempt.timeout
-    - orchestrator.dispatch
-    - orchestrator.view.mutate
-    - orchestrator.file.write
-    - output.rejected
-    - issue.report
-    - verify.start
-    - verify.ok
-    - verify.fail
-    - run.end
-    - emergency.override
-    - orchestrator.health
-  may_apply_effects:
-    file_write: true
-    view_mutate: true
-  may_regress_done: false
-task_update_contract:
-  allowed_states:
-    - "done"
-    - "blocked"
-    - "halted"
-  when_state_done:
-    required_fields_in_payload:
-      - task_id
-      - attempt_id
-      - state: "done"
-      - completed_by          # ← nome do agente (agent-spec, agent-impl, etc.)
-      - completed_by_name     # ← "Spec Writer", "Implementation", etc.
-      - completed_by_model    # ← "codex-gpt-5", etc.
-      - done_ts
-      - reason
-    effects:
-      - set task.state = "done"
-      - set task.current_attempt_id = null
-      - set attempt.status = "completed"
-      - update roadmap.json via view_mutate
-      - trigger projection + verify
+roles:
+  orchestrator:
+    is_single_writer: true
+    reserved_actions:
+      - run.start
+      - run.end
+      - task.create
+      - hotfix.create
+      - issue.resolve
+      - output.rejected
+      - orchestrator.file.write
+      - orchestrator.view.mutate
+      - verify.start
+      - verify.ok
+      - verify.fail
 
-invariants:
-- id: INV-ORCH-001
-  rule: Nunca regredir task.state=done. Correções ocorrem via emergency.override + nova task emergency_patch (supersede).
-- id: INV-ORCH-002
-  rule: Todo efeito (file.write/view.mutate/dispatch) deve referenciar task_id e attempt_id válidos e atuais.
-- id: INV-ORCH-003
-  rule: Nenhuma persistência de efeito antes de validação completa do output do agente (fail-closed).
-- id: INV-ORCH-004
-  rule: Aplicar boundaries.write por task_kind, com normalização de path e bloqueio
-    de traversal.
-- id: INV-ORCH-005
-  rule: event_seq é o append index e deve ser monotônico; event_id é único e deduplicado.
-- id: INV-ORCH-006
-  rule: roadmap.json deve ser verificável por replay; divergência => verify_status=corrupted
-    e pipeline bloqueado.
-audit:
-  emit_health_events:
-    enabled: true
-    interval: PT5M
-    event: orchestrator.health
-  required_effect_events:
-  - action: orchestrator.file.write
-    must_include:
-    - task_id
-    - attempt_id
-    - payload.paths
-    - payload.reason
-  - action: orchestrator.view.mutate
-    must_include:
-    - task_id
-    - attempt_id
-    - payload.patch
-    - payload.reason
-  rejection_logging:
-    emit_event: output.rejected
-    include_raw_preview_chars: 200
-    include_raw_sha256: true
-runtime_enums:
-  verify_status:
-  - unknown
-  - ok
-  - mismatch
-  - corrupted
-  run_status:
-  - idle
-  - initialized
-  - running
-  - success
-  - failed
-  - halted
-failure_policy:
-  on_validation_failure:
-    action: reject_and_log
-    persist_effects: false
-  on_projection_mismatch:
-    action: halt_pipeline
-    set_verify_status: mismatch
-  on_corruption:
-    action: halt_pipeline
-    set_verify_status: corrupted
+event_store:
+  path: ".roadmap/activity.jsonl"
+  format: "jsonl"
+  append_only: true
+  ordering:
+    field: "event_seq"
+    monotonic: true
+    no_gaps: true
+
+read_models:
+  roadmap:
+    path: ".roadmap/roadmap.json"
+    schema: ".roadmap/roadmap.schema.json"
+  issues:
+    path: ".roadmap/issues.json"
+    schema: ".roadmap/issues.schema.json"
+  lessons:
+    path: ".roadmap/lessons.json"
+    schema: ".roadmap/lessons.schema.json"
+
+validation:
+  agent_result_schema: ".roadmap/agent_result.schema.json"
+  agent_contract: ".roadmap/AGENT_CONTRACT.yaml"
+  reject_on:
+    - unknown_action
+    - schema_violation
+    - boundary_violation
+    - immutable_done_violation
+    - lock_violation
+    - invalid_transition
+
+state_machine:
+  task_status_enum: ["todo", "in_progress", "review", "done"]
+  transitions:
+    - from: "todo"
+      on_action: "claim"
+      to: "in_progress"
+    - from: "in_progress"
+      on_action: "complete"
+      to: "review"
+    - from: "review"
+      on_action: "review"
+      decision: "approve"
+      to: "done"
+    - from: "review"
+      on_action: "review"
+      decision: "request_changes"
+      to: "in_progress"
+
+immutability:
+  done_is_terminal: true
+  reject_status_regression_from_done: true
+  correction_flow:
+    trigger_action: "issue.report"
+    orchestrator_action: "hotfix.create"
+
+pipeline:
+  deterministic_steps:
+    - parse_event_store
+    - select_next_eligible_task
+    - dispatch_agent
+    - validate_agent_output
+    - append_events
+    - project_views
+    - verify_projection
+

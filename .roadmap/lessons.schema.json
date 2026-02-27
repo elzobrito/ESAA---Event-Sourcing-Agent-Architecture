@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://esaa.local/schemas/lessons.schema.json",
+  "title": "ESAA Lessons Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meta", "lessons", "indexes"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "esaa_version", "generated_by", "source_event_store", "updated_at"],
+      "properties": {
+        "schema_version": {
+          "const": "0.4.0"
+        },
+        "esaa_version": {
+          "type": "string"
+        },
+        "generated_by": {
+          "type": "string"
+        },
+        "source_event_store": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "lessons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["lesson_id", "status", "created_at", "title", "mistake", "rule", "scope", "enforcement"],
+        "properties": {
+          "lesson_id": {
+            "type": "string",
+            "pattern": "^LES-\\d{4}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "archived"]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mistake": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rule": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["task_kinds"],
+            "properties": {
+              "task_kinds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["spec", "impl", "qa"]
+                }
+              }
+            }
+          },
+          "enforcement": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode", "applies_to"],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["reject", "warn", "require_field", "require_step"]
+              },
+              "applies_to": {
+                "type": "string",
+                "enum": ["output_contract", "boundaries", "template", "workflow_gate", "verification_gate"]
+              }
+            }
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "indexes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by_task_kind", "by_enforcement_applies_to"],
+      "properties": {
+        "by_task_kind": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^LES-\\d{4}$"
+            }
+          }
+        },
+        "by_enforcement_applies_to": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^LES-\\d{4}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

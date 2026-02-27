@@ -1,74 +1,35 @@
-version: "0.3.0"
+version: "0.4.0"
 
 attempt_lifecycle:
   ttl: "PT30M"
   on_ttl_exceeded:
-    emit_event: "attempt.timeout"
+    emit_event: "output.rejected"
+    error_code: "ATTEMPT_TIMEOUT"
 
 attempt_limits:
   max_attempts_per_task: 3
+  cooldown_between_attempts: "PT2M"
   on_limit_exceeded:
-    action: "block_task"
     emit_event: "issue.report"
     auto_severity: "high"
-    message: "Task atingiu limite máximo de tentativas sem sucesso."
-  cooldown_between_attempts: "PT2M"
 
 issue_escalation:
   rules:
     - severity: "low"
       action: "log_only"
-      notify: false
     - severity: "medium"
       action: "log_and_flag"
-      notify: false
-      auto_block_task: false
     - severity: "high"
       action: "block_task"
-      notify: true
-      auto_block_task: true
-      block_dependents: true
     - severity: "critical"
       action: "halt_pipeline"
-      notify: true
-      auto_block_task: true
-      block_dependents: true
-      halt_run: true
-  escalation_thresholds:
-    auto_escalate_after_repeated:
-      count: 3
-      from_severity: "medium"
-      to_severity: "high"
-      message: "Issue medium reportada 3+ vezes na mesma task; escalada para high automaticamente."
 
-rollback_policy:
-  on_verify_corrupted:
+verify_policy:
+  on_mismatch:
+    action: "reproject_or_halt"
+  on_corrupted:
     action: "halt_and_snapshot"
-    steps:
-      - "Halt pipeline imediatamente (run.status=halted)."
-      - "Preservar activity.jsonl atual como .roadmap/snapshots/activity_<ts>.jsonl."
-      - "Preservar roadmap.json atual como .roadmap/snapshots/roadmap_<ts>.json."
-      - "Emitir issue.report com severity=critical e detalhes da corrupção."
-      - "Bloquear qualquer operação de escrita até resolução manual."
-    recovery:
-      manual_required: true
-      allowed_actions:
-        - "Replay do event store para regenerar roadmap.json."
-        - "Identificar e remover evento corrompido (somente com auditoria manual)."
-        - "emergency.override para restaurar estado consistente."
-  on_verify_mismatch:
-    action: "auto_reprojet_or_halt"
-    steps:
-      - "Tentar reprojeção automática: project(events) e reescrever roadmap.json."
-      - "Se reprojeção resolve divergência: verify_status=ok, pipeline continua."
-      - "Se reprojeção falha: escalar para corrupted e aplicar on_verify_corrupted."
   snapshot_retention:
-    max_snapshots: 10
+    max_snapshots: 20
     cleanup_policy: "oldest_first"
 
-run_end_criteria:
-  success:
-    requires_all:
-      - "all_tasks_in_scope_done_or_superseded"
-      - "no_open_issues_severity_gte_high"
-      - "verify_projection_ok"

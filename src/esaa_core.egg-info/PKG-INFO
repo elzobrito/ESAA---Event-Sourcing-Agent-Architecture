@@ -1,0 +1,197 @@
+Metadata-Version: 2.4
+Name: esaa-core
+Version: 0.4.0
+Summary: ESAA deterministic orchestrator core
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: PyYAML>=6.0
+Requires-Dist: jsonschema>=4.22.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.2.0; extra == "dev"
+
+# ESAA Core (v0.4.x)
+
+ESAA is an event-sourced architecture for orchestrating autonomous LLM agents with deterministic replay and auditable state transitions.
+
+This repository now contains a functional ESAA core implementation with:
+
+1. canonical append-only event store (`.roadmap/activity.jsonl`);
+2. deterministic projections (`roadmap.json`, `issues.json`, `lessons.json`);
+3. strict contracts/schemas (`.roadmap/*.yaml`, `.roadmap/*.schema.json`);
+4. CLI commands (`esaa init`, `esaa run`, `esaa project`, `esaa verify`, `esaa replay`);
+5. legacy read compatibility for v0.3 events (`run.init` + `data` mapped to canonical v0.4).
+
+## Installation
+
+```bash
+python -m pip install -e .[dev]
+```
+
+## CLI
+
+### Initialize clean-state
+
+```bash
+esaa init --force
+```
+
+Creates:
+
+- `.roadmap/activity.jsonl` with canonical `run.start` + seed `task.create` events;
+- `.roadmap/roadmap.json`, `.roadmap/issues.json`, `.roadmap/lessons.json` projected from events.
+
+### Execute deterministic orchestration steps
+
+```bash
+esaa run --steps 9
+```
+
+Default integration uses a deterministic mock adapter (`execute(dispatch_context) -> agent_output`) to support fully reproducible offline runs.
+
+### Reproject read-models
+
+```bash
+esaa project
+```
+
+### Verify state via replay + hash
+
+```bash
+esaa verify
+```
+
+### Replay until event id or seq
+
+```bash
+esaa replay --until 12
+esaa replay --until EV-00000012
+```
+
+## Canonical event envelope (v0.4.x)
+
+Every event in `.roadmap/activity.jsonl` contains:
+
+1. `schema_version`
+2. `event_id`
+3. `event_seq`
+4. `ts`
+5. `actor`
+6. `action`
+7. `payload`
+
+`event_seq` must be monotonic and gap-free.
+
+## Canonical action vocabulary
+
+1. `run.start`
+2. `run.end`
+3. `task.create`
+4. `claim`
+5. `complete`
+6. `review`
+7. `issue.report`
+8. `hotfix.create`
+9. `issue.resolve`
+10. `output.rejected`
+11. `orchestrator.file.write`
+12. `orchestrator.view.mutate`
+13. `verify.start`
+14. `verify.ok`
+15. `verify.fail`
+
+## Legacy compatibility (read-only)
+
+During event parsing:
+
+1. `run.init` is normalized to `run.start`;
+2. `data` is normalized to `payload`;
+3. legacy `verify_status=fail` is normalized to `mismatch`.
+
+Writing always uses canonical v0.4 envelope.
+
+## Adapter contract
+
+Public interface:
+
+1. `health() -> status`
+2. `execute(dispatch_context) -> agent_output`
+
+`dispatch_context` contains:
+
+1. current task;
+2. resolved boundaries;
+3. context pack (project/run);
+4. correlation fields.
+
+`agent_output` contains:
+
+1. `activity_event`;
+2. optional `file_updates`;
+3. no extra root keys.
+
+## Determinism and verify
+
+`esaa verify` replays all events and computes SHA-256 over canonical JSON:
+
+```json
+{
+  "schema_version": "...",
+  "project": {...},
+  "tasks": [...],
+  "indexes": {...}
+}
+```
+
+`meta.run` is excluded from hash input to avoid self-reference.
+
+Verify status:
+
+- `ok`
+- `mismatch`
+- `corrupted`
+
+## Test suite
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Coverage includes:
+
+1. schema/contract conformance;
+2. legacy compatibility parsing;
+3. lock ownership and done immutability;
+4. boundary enforcement;
+5. output rejection without side effects;
+6. verify (`ok`, `mismatch`, `corrupted`);
+7. replay until partial event sequence.
+
+## Repository layout
+
+```text
+.roadmap/
+  activity.jsonl
+  roadmap.json
+  issues.json
+  lessons.json
+  AGENT_CONTRACT.yaml
+  ORCHESTRATOR_CONTRACT.yaml
+  RUNTIME_POLICY.yaml
+  STORAGE_POLICY.yaml
+  PROJECTION_SPEC.md
+  agents_swarm.yaml
+  PARCER_PROFILE.agent-docs.yaml
+  PARCER_PROFILE.orchestrator-runtime.yaml
+  *.schema.json
+src/esaa/
+  cli.py
+  service.py
+  store.py
+  projector.py
+  validator.py
+  adapters/
+tests/
+```
+

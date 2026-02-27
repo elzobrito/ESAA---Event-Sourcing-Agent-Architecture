@@ -1,71 +1,50 @@
-# .roadmap/agents_swarm.yaml
-version: "0.3.0"
-
 meta:
-  name: "ESAA Agents Registry (global+project)"
-  resolution_mode: "by_task_kind"
+  registry_version: "0.4.0"
+  esaa_version: "0.4.x"
+  immutable_done: true
 
-# Registro GLOBAL (genérico). Projetos podem sobrescrever via um arquivo de extensão,
-# mas aqui deixamos um único arquivo canônico para o exemplo.
 agents:
   agent-spec:
-    role: "Spec Writer"
-    allowed_actions: ["agent.result", "issue.report", "agent.heartbeat"]
-
+    display_name: "agent-spec"
+    role: "specification"
   agent-impl:
-    role: "Implementation"
-    allowed_actions: ["agent.result", "issue.report", "agent.heartbeat"]
-
+    display_name: "agent-impl"
+    role: "implementation"
   agent-qa:
-    role: "Quality Assurance"
-    allowed_actions: ["agent.result", "issue.report", "agent.heartbeat"]
+    display_name: "agent-qa"
+    role: "quality"
+  agent-mock:
+    display_name: "agent-mock"
+    role: "deterministic-offline-fixture"
 
 resolution:
   by_task_kind:
     spec:
       agent: "agent-spec"
-      template: "spec.generic"
+      template: "spec.core"
     impl:
       agent: "agent-impl"
-      template: "impl.generic"
+      template: "impl.core"
     qa:
       agent: "agent-qa"
-      template: "qa.generic"
-    emergency_patch:
-      agent: "agent-impl"
-      template: "impl.emergency_patch"
+      template: "qa.core"
+  overrides:
+    when_task_flag_is_hotfix:
+      impl:
+        agent: "agent-impl"
+        template: "impl.hotfix"
 
 templates:
-  # Templates são descrições mínimas; o orquestrador monta o prompt final
-  # com context_pack + boundaries + contrato.
-  spec.generic:
-    system: |
-      Você é um agente de especificação. Responda APENAS em JSON conforme o AGENT_CONTRACT.
-      Proponha patches apenas dentro de boundaries. Se houver incerteza, emita issue.report.
+  spec.core:
+    task_kind: "spec"
+    output_contract_hint: "Emit claim|complete|review|issue.report with strict JSON envelope."
+  impl.core:
+    task_kind: "impl"
+    output_contract_hint: "complete requires verification.checks."
+  impl.hotfix:
+    task_kind: "impl"
+    output_contract_hint: "complete requires issue_id + fixes + min 2 checks."
+  qa.core:
+    task_kind: "qa"
+    output_contract_hint: "Review with approve/request_changes; report defects with evidence."
 
-    task_instructions: |
-      Produza documentação canônica em .roadmap/. Seja determinístico e verificável.
-
-  impl.generic:
-    system: |
-      Você é um agente de implementação. Responda APENAS em JSON conforme o AGENT_CONTRACT.
-      Proponha patches apenas dentro de boundaries. Se houver erro, emita issue.report.
-
-    task_instructions: |
-      Proponha patches de código e alterações mínimas, com foco em testabilidade e clareza.
-
-  qa.generic:
-    system: |
-      Você é um agente de QA. Responda APENAS em JSON conforme o AGENT_CONTRACT.
-      Valide consistência, riscos e checklist. Se algo bloquear, issue.report.
-
-    task_instructions: |
-      Proponha checklist, critérios de aceite e validações determinísticas.
-
-  impl.emergency_patch:
-    system: |
-      Você é um agente de implementação em modo de emergência. Responda APENAS em JSON.
-      Priorize correção segura e mínima. Se necessário, issue.report com severity=critical.
-
-    task_instructions: |
-      Proponha patches mínimos e reversíveis, mantendo trilha de auditoria.

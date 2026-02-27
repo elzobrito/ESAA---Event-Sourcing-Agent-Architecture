@@ -1,73 +1,68 @@
-<!-- .roadmap/PROJECTION_SPEC.md -->
-# ESAA v0.3.0 — Projection + Verify (CANÔNICO)
+# ESAA v0.4.x — Projection + Verify (Canonical)
 
-Fonte de verdade: `.roadmap/activity.jsonl` (append-only).  
-Read-model materializado: `.roadmap/roadmap.json` (derivado e verificável).
+Source of truth: `.roadmap/activity.jsonl` (append-only).  
+Materialized views: `.roadmap/roadmap.json`, `.roadmap/issues.json`, `.roadmap/lessons.json`.
 
-## Enum canônico
+## Event envelope
 
-- roadmap.run.verify_status ∈ { unknown, ok, mismatch, corrupted }
-- roadmap.run.status ∈ { idle, initialized, running, success, failed, halted }
+Each event MUST contain:
 
-## Ordem
+1. `schema_version`
+2. `event_id`
+3. `event_seq`
+4. `ts`
+5. `actor`
+6. `action`
+7. `payload`
 
-Eventos são aplicados estritamente por `event_seq` crescente (append index). `ts` não ordena.
+`event_seq` is strictly monotonic and gap-free.
 
-## Projeção (função pura)
+## Canonical vocabulary
 
-`project(events) -> roadmap_state`
+`run.start`, `run.end`, `task.create`, `claim`, `complete`, `review`, `issue.report`, `hotfix.create`,
+`issue.resolve`, `output.rejected`, `orchestrator.file.write`, `orchestrator.view.mutate`,
+`verify.start`, `verify.ok`, `verify.fail`.
 
-Regras essenciais:
+## Projection function
 
-1. `task.create` cria task com `state=todo`.
-2. `attempt.create`:
-   - pre: task existe, task.state != done, task.superseded_by == null
-   - eff: cria attempt(active), seta current_attempt_id, task.state=in_progress
-3. `orchestrator.dispatch`:
-   - pre: attempt_id == current_attempt_id e attempt.status == active
-   - eff: registra metadados no attempt
-4. `issue.report`:
-   - eff: adiciona issue_open; aplicar efeitos conforme `.roadmap/RUNTIME_POLICY.yaml` (block/halt/etc.)
-5. `attempt.timeout`:
-   - pre: attempt.status == active
-   - eff: attempt.status=timed_out; current_attempt_id=null; task.state=todo (ou blocked por policy)
-6. `task.update` para `state=done`:
-   - pre: task.state != done; attempt atual existe e está active; gating de risco/QA conforme policy
-   - eff: task.state=done; attempt.status=completed; done_ts set; current_attempt_id=null
-7. `emergency.override`:
-   - nunca muda task done anterior para não-done
-   - marca relação de supersedência no read-model (done continua done; agora “superseded”)
-   - cria (por eventos) uma nova task com kind=emergency_patch
+`project(events) -> (roadmap, issues, lessons)`
 
-## Verify (replay + hash)
-`esaa verify` faz replay completo dos eventos e valida:
+Rules:
 
-1. Monotonicidade de `event_seq` (sem regressão).
-2. Append-only (`activity.jsonl` nunca é editado; apenas acrescido).
-3. Boundaries e autoridade (agente não pode aplicar efeitos).
-4. Imutabilidade de tarefas `done` (sem regressão).
-5. Consistência do read-model via comparação de hash.
+1. `task.create` creates task in `todo`.
+2. `claim` transitions `todo -> in_progress` and sets lock fields (`assigned_to`, `started_at`).
+3. `complete` transitions `in_progress -> review` (owner only).
+4. `review(approve)` transitions `review -> done`.
+5. `review(request_changes)` transitions `review -> in_progress`.
+6. `issue.report` opens/updates issue.
+7. `hotfix.create` adds a new hotfix task; original done task remains immutable.
+8. `issue.resolve` marks issue as resolved.
+9. `done` is terminal and never regresses.
 
-### Hash de projeção (evita auto-referência)
-Para evitar auto-referência (o hash dentro do próprio objeto hasheado), o ESAA define um objeto de hashing **derivado** do estado projetado:
+## Verify
 
-`hash_input = {schema_version, project, tasks, indexes}`
+`esaa verify` performs:
 
-Ou seja: o objeto `run` (metadados de execução, timestamps e `projection_hash_sha256`) **não participa** do cálculo do hash.
+1. strict parse of JSONL;
+2. sequence and event-id integrity checks;
+3. deterministic replay;
+4. canonical JSON serialization;
+5. SHA-256 comparison against materialized roadmap hash.
 
-Canonicalização (determinística):
-- JSON UTF-8
-- chaves ordenadas (`sort_keys=true`)
-- sem espaços (`separators=(',', ':')`)
-- newline final LF (`
-`)
-- timezone lógica do projeto apenas para campos `ts` (não afeta canonicalização do JSON)
+Hash input excludes `meta.run` to avoid self-reference:
 
-### Eventos de verificação (recomendado para auditoria)
-O orquestrador SHOULD emitir eventos explícitos de verificação:
+```json
+{
+  "schema_version": "...",
+  "project": {...},
+  "tasks": [...],
+  "indexes": {...}
+}
+```
 
-- `verify.start`: inicia o replay/validação (inclui flags como `strict=true`).
-- `verify.ok`: registra `projection_hash_sha256` calculado e marca `run.verify_status="ok"`.
-- `verify.fail`: registra divergência (`expected` vs `computed`) e marca `run.verify_status="mismatch"` ou `"corrupted"`.
+Status outcomes:
 
-Observação: por ser uma auditoria, `verify.*` pode ocorrer **antes** de `run.end` (pipeline inline) ou **após** `run.end` (auditoria pós-run). Em ambos os casos, a projeção é determinística: o último evento `verify.*` vence para `run.verify_status`.
+- `ok`
+- `mismatch`
+- `corrupted`
+

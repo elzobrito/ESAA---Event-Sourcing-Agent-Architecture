@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "schema_version": "0.4.0",
+    "esaa_version": "0.4.x",
+    "generated_by": "esaa.project",
+    "source_event_store": ".roadmap/activity.jsonl",
+    "last_event_seq": 6,
+    "updated_at": "2026-02-27T01:25:22Z"
+  },
+  "issues": [],
+  "indexes": {
+    "open_by_baseline": {}
+  }
+}
