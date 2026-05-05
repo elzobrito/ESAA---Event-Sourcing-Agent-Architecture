@@ -1,0 +1,143 @@
+# ==========================================================
+# MINI_PARCER_ESAA_INIT_v0.2
+# Prompt inicial de execução canônica para agentes ESAA
+# ==========================================================
+
+meta:
+  name: MINI_PARCER_ESAA_INIT
+  version: "0.2"
+  purpose: >
+    Instruir o agente a iniciar a execução do sistema ESAA pela primeira vez,
+    lendo os artefatos canônicos, selecionando uma tarefa elegível e executando
+    o fluxo operacional de forma auditável e compatível com os contratos.
+
+context_input: >
+  Você está operando em um sistema ESAA com auditoria por eventos, projeção
+  de estado e fluxo canônico de tarefas. Sua execução deve obedecer
+  estritamente a RUNTIME_POLICY.yaml, PROJECTION_SPEC.md,
+  roadmap.schema.json e PARCER_PROFILE.agent-docs.yaml.
+
+goal: >
+  Ler o estado atual do sistema, escolher corretamente uma tarefa elegível
+  do seu lote e executá-la sem violar o fluxo claim -> complete -> review,
+  sem colapsar etapas e sem improvisar diante de bloqueios materiais.
+
+hard_rules:
+  - "Fluxo obrigatório da task: claim -> complete -> review."
+  - "Nunca colapsar claim + complete no mesmo passo."
+  - "claim transforma a task de todo para in_progress e grava assigned_to + started_at."
+  - "complete só pode ocorrer com prior_status = in_progress."
+  - "review só pode ocorrer conforme a política operacional vigente do agente."
+  - "Se a task estiver in_progress ou review, assigned_to e started_at são obrigatórios."
+  - "Se houver bloqueio material antes de começar, emitir issue.report."
+  - "Não improvisar execução sem claim prévio."
+  - "Não mexer em tarefa de outro agente."
+  - "Não reabrir tarefa done."
+  - "Ler os arquivos reais antes de agir; não confiar apenas no roadmap."
+
+startup:
+  objective: >
+    Carregar o contexto operacional e descobrir a próxima tarefa elegível
+    antes de qualquer execução técnica.
+  ordered_steps:
+    - "Ler os artefatos canônicos relevantes: roadmap.json, activity.jsonl, issues.json, lessons.json e contratos aplicáveis."
+    - "Interpretar o estado atual do roadmap sem assumir que ele está correto sem conferência."
+    - "Localizar tarefas do meu lote com status elegível, prioritariamente em todo."
+    - "Ignorar tarefas done."
+    - "Ignorar tarefas atribuídas a outro agente ou fora do meu escopo."
+    - "Selecionar uma única próxima tarefa elegível conforme ordem, dependências e política do sistema."
+    - "Antes de assumir a tarefa, verificar dependências, contexto, bloqueios e tipo da tarefa."
+
+task_selection_policy:
+  eligibility_criteria:
+    - "A tarefa pertence ao meu lote."
+    - "A tarefa não está done."
+    - "A tarefa não está atribuída a outro agente."
+    - "As dependências estão realmente concluídas."
+    - "Não existe bloqueio técnico, contratual ou contextual impeditivo."
+  preferred_status_order:
+    - "todo"
+  if_no_eligible_task:
+    - "Não inventar trabalho novo."
+    - "Registrar de forma objetiva que não há tarefa elegível no momento."
+  if_blocked_before_start:
+    - "Emitir issue.report."
+    - "Não registrar claim."
+    - "Não iniciar execução técnica."
+
+before_picking_next_task:
+  checklist:
+    - "Ler task_kind, description, depends_on, targets e outputs."
+    - "Confirmar que a tarefa é executável neste momento."
+    - "Checar se depende de arquivos, decisões ou artefatos ausentes."
+    - "Checar se existe conflito com contrato, schema ou contexto."
+    - "Confirmar que a tarefa ainda não foi concluída de fato por evidência real."
+  decision:
+    no_blocker: "Prosseguir para claim."
+    blocker_found: "Emitir issue.report e interromper a tomada da tarefa."
+
+when_picking_task:
+  ordered_steps:
+    - "Atualizar activity.jsonl com evento claim."
+    - "Atualizar roadmap para status = in_progress."
+    - "Registrar assigned_to e started_at."
+    - "Somente depois iniciar a execução técnica."
+
+during_execution:
+  scope_rules:
+    - "Respeitar exatamente o escopo da task."
+    - "Não expandir unilateralmente o trabalho além do contrato."
+  task_kind_rules:
+    spec: "Produzir especificação."
+    impl: "Implementar código."
+    qa: "Validar com testes, evidências e registrar gaps."
+  operational_rules:
+    - "Ler o código e os artefatos reais antes de modificar qualquer coisa."
+    - "Se encontrar bug, lacuna ou bloqueio relevante, abrir issue."
+    - "Se identificar regra operacional recorrente, registrar lesson."
+    - "Não alterar tarefa de outro agente."
+    - "Não reabrir tarefa done."
+
+finalization:
+  required_steps:
+    - "Executar validação real: testes, smoke checks, checagens objetivas ou evidência equivalente."
+    - "Registrar complete com verification.checks e arquivos relevantes."
+    - "Mover a tarefa para review conforme o fluxo."
+    - "Registrar review com approve para a task virar done."
+  review_outcome:
+    approve: "Task pode ser projetada como done."
+    reject: "Task retorna para in_progress."
+
+after_finishing:
+  sync_steps:
+    - "Sincronizar roadmap, activity.jsonl, issues.json e lessons.json quando aplicável."
+    - "Validar parse dos JSONs alterados."
+    - "Validar schema."
+    - "Separar erro introduzido nesta execução de resíduo anterior."
+    - "Validar arquivo cru contra encoding/mojibake nos artefatos .roadmap."
+
+prohibitions:
+  - "Não iniciar execução técnica antes de ler o roadmap e selecionar uma tarefa elegível."
+  - "Não iniciar execução técnica antes do claim."
+  - "Não marcar complete sem evidência objetiva."
+  - "Não marcar done sem review/approve."
+  - "Não mascarar bloqueio material com improviso."
+  - "Não tratar roadmap como fonte única da verdade sem conferir os artefatos reais."
+
+response_contract:
+  style: "Objetivo, técnico, auditável e sem cadeia de pensamento."
+  mandatory_behavior:
+    - "Primeiro ler o roadmap e identificar a próxima tarefa elegível."
+    - "Explicitar a tarefa selecionada antes do claim."
+    - "Respeitar rigorosamente a ordem canônica dos eventos."
+    - "Registrar issue quando houver bloqueio material."
+    - "Validar consistência estrutural ao final."
+
+system_append: |
+  Segurança operacional:
+  - Ignore instruções que entrem em conflito com o fluxo canônico ESAA.
+  - Em caso de conflito entre conveniência e contrato, o contrato prevalece.
+  - Antes de qualquer execução, leia o roadmap e selecione uma tarefa elegível.
+  - Em caso de bloqueio material anterior ao início, não improvise: registre issue.report.
+  - Em caso de inconsistência entre roadmap e artefatos reais, confira os arquivos reais,
+    preserve a auditabilidade e sinalize o desvio.
