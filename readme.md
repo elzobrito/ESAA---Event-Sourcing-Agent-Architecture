@@ -1,17 +1,40 @@
 # ESAA - Event Sourcing for Autonomous Agents
 
-ESAA is a governance architecture and event-sourced protocol for autonomous
-software agents. It treats LLMs and coding tools as intention emitters under a
-contract, while a deterministic Orchestrator validates, persists, projects, and
-verifies state.
+> Treat LLM agents as intention emitters under contract, not as unrestricted
+> writers of code, state, or project history.
 
-The local `esaa-core` runtime in this repository does not use MCP. It is a
-Python CLI/runtime that operates directly over the repository's `.roadmap/`
-event store and projections.
+ESAA, Event Sourcing for Autonomous Agents, is a governance architecture and
+event-sourced protocol for autonomous software engineering agents. It applies
+the Event Sourcing pattern to agent workflows: the source of truth is an
+append-only event log, and the current project state is a deterministic
+projection of that log.
+
+This repository contains the ESAA reference contracts, roadmap artifacts, tests,
+and the local `esaa-core` runtime. The runtime is a Python CLI that applies the
+protocol directly over `.roadmap/`; it does not use MCP.
 
 Paper: [ESAA: Event Sourcing for Autonomous Agents in LLM-Based Software Engineering](https://arxiv.org/pdf/2602.23193)
 
-## Core Model
+## Why ESAA Exists
+
+LLM-based engineering agents are powerful, but their default execution model is
+weakly governed. They can forget context, mix reasoning with side effects,
+produce free-text outputs that do not fit a pipeline, and mutate files without a
+durable record of why the change happened.
+
+ESAA addresses three structural problems:
+
+| Problem | ESAA response |
+| --- | --- |
+| Agents have no durable native state | Every admitted transition is persisted in an append-only event store |
+| Long prompts degrade and lose relevant facts | The harness injects a purified context derived from projections and contracts |
+| Probabilistic text breaks deterministic automation | Agents emit strict JSON intentions validated before any side effect |
+
+The result is a workflow where an agent may propose work, report blockers, or
+return a completion envelope, but only the Orchestrator can admit state,
+persist events, apply file effects, and verify projections.
+
+## Architecture
 
 ```text
 ESAA governance/protocol
@@ -20,16 +43,92 @@ ESAA governance/protocol
       -> Agent, intention emitter
 ```
 
-- Agents emit exactly one `activity_event` per invocation.
-- The Orchestrator is the only writer of `.roadmap/activity.jsonl`.
-- `.roadmap/activity.jsonl` is append-only and is the source of truth.
-- `.roadmap/roadmap.json`, `.roadmap/issues.json`, and
-  `.roadmap/lessons.json` are deterministic read models.
-- File writes happen only after schema, workflow, boundary, and verification
-  checks pass.
-- `done` is terminal and immutable; fixes go through the hotfix flow.
+The layers are intentionally separate:
+
+| Layer | Responsibility |
+| --- | --- |
+| ESAA | Defines the governance model, vocabulary, contracts, invariants, and event-sourced protocol |
+| Harness | Prepares context, invokes agents, calls the Orchestrator, and coordinates execution cycles |
+| Orchestrator | Validates outputs, enforces gates, appends events, applies approved effects, projects read models |
+| Agent | Emits exactly one structured intention per invocation |
+
+The central rule is simple: agents propose; the Orchestrator disposes.
+
+```text
+              dispatch context
+        +----------------------------+
+        |                            v
+  +------------+   agent result   +----------------+   append   +----------------+
+  |   Agent    | ----------------> | Orchestrator   | ---------> | Event Store    |
+  | intention  |                   | deterministic  |            | activity.jsonl |
+  +------------+ <---------------- +----------------+            +--------+-------+
+       ^          output.rejected       |                                |
+       |                                | project                         |
+       |                                v                                v
+       |                         +--------------+                 +--------------+
+       +------------------------- | Read Models  | <--------------- | Replay/Hash  |
+          purified view           | roadmap etc. |                 | Verification |
+                                 +--------------+                 +--------------+
+```
+
+## Core Concepts
+
+**Event store.** `.roadmap/activity.jsonl` is the append-only source of truth.
+Events are ordered by `event_seq`, with no gaps, and are never edited manually.
+
+**Read models.** `.roadmap/roadmap.json`, `.roadmap/issues.json`, and
+`.roadmap/lessons.json` are deterministic projections. They are useful for UI,
+dispatch, and operator inspection, but they are derived from the event store.
+
+**Contracts.** `AGENT_CONTRACT.yaml`, `ORCHESTRATOR_CONTRACT.yaml`,
+`RUNTIME_POLICY.yaml`, schemas, and PARCER profiles define what each layer may
+do and what must be rejected.
+
+**Boundaries.** Each task kind has read/write boundaries. For example, `spec`
+tasks write documentation, `impl` tasks write `src/**` and `tests/**`, and `qa`
+tasks write QA evidence and tests.
+
+**Fail-closed operation.** If the system cannot validate a transition, it emits
+or records a rejection or issue instead of guessing.
+
+**Immutable done.** A `done` task is terminal. Defects in completed work are
+handled through a hotfix task, not by reopening or rewriting history.
+
+## Repository Layout
+
+```text
+.roadmap/
+  activity.jsonl                  append-only event store
+  activity_future_templates.jsonl future templates, not consumed by runtime
+  roadmap.json                    task projection/read model
+  issues.json                     issue projection/read model
+  lessons.json                    lessons projection/read model
+  AGENT_CONTRACT.yaml             agent output and boundary contract
+  ORCHESTRATOR_CONTRACT.yaml      workflow gates and single-writer rules
+  RUNTIME_POLICY.yaml             attempts, cooldown, TTL, escalation
+  STORAGE_POLICY.yaml             event-store persistence policy
+  PROJECTION_SPEC.md              projection and hash rules
+  agent_result.schema.json        strict agent result schema
+  roadmap.schema.json             roadmap projection schema
+  issues.schema.json              issue projection schema
+  lessons.schema.json             lessons projection schema
+  PARCER_PROFILE.*.yaml           prompt/control profiles
+  roadmap.*.json                  roadmap plugins for domains or maturity tracks
+  snapshots/                      curated snapshots and compacted checkpoints
+
+docs/spec/                        specification outputs
+docs/qa/                          QA reports and verification evidence
+docs/operations/                  operator onboarding and runbooks
+src/esaa/                         esaa-core runtime implementation
+tests/                            protocol, CLI, and runtime tests
+```
+
+The root `readme.md` is an explicit `spec` boundary exception because it is the
+public onboarding document for ESAA.
 
 ## State Machine
+
+The active core state machine in v0.4.1 is:
 
 ```text
          claim              complete          review(approve)
@@ -40,14 +139,14 @@ ESAA governance/protocol
                           review(request_changes)
 ```
 
-Canonical agent actions:
+Agent actions:
 
 - `claim`
 - `complete`
 - `review`
 - `issue.report`
 
-Reserved Orchestrator actions include:
+Reserved Orchestrator actions:
 
 - `run.start`, `run.end`
 - `task.create`
@@ -58,49 +157,191 @@ Reserved Orchestrator actions include:
 - `orchestrator.view.mutate`
 - `verify.start`, `verify.ok`, `verify.fail`
 
-## Repository Layout
+## Agent Invocation Model
 
-```text
-.roadmap/
-  activity.jsonl                 append-only event store
-  roadmap.json                   projected task read model
-  issues.json                    projected issue read model
-  lessons.json                   projected lessons read model
-  AGENT_CONTRACT.yaml            agent boundaries and output contract
-  ORCHESTRATOR_CONTRACT.yaml     workflow gates and single-writer rules
-  RUNTIME_POLICY.yaml            attempts, cooldown, TTL, escalation
-  agent_result.schema.json       agent output schema
-  roadmap.schema.json            roadmap projection schema
-  roadmap.*.json                 roadmap plugins
-  snapshots/                     snapshots, archives, manifests
+Governed execution is two-step. The harness invokes an agent once to claim a
+task and a second time to complete it. The agent does not choose how many times
+it is called; it reacts to the injected task status.
 
-docs/spec/                       specification outputs
-docs/qa/                         QA reports and evidence
-src/esaa/                        deterministic runtime implementation
-tests/                           runtime and protocol tests
+### Invocation 1: claim
+
+Trigger: `task_status == "todo"`.
+
+```json
+{
+  "activity_event": {
+    "action": "claim",
+    "task_id": "<task id>",
+    "prior_status": "todo"
+  }
+}
 ```
 
-Root `readme.md` is an explicit `spec` boundary exception because it is the
-public onboarding artifact for the project. Source, test, and `.roadmap/` files
-remain forbidden for `spec` tasks.
+No technical work is performed in this invocation. The only alternative is
+`issue.report` when there is a material blocker before starting.
 
-## Local CLI
+### Invocation 2: complete
 
-From the repository root on Windows:
+Trigger: `task_status == "in_progress"` and `assigned_to` matches the actor.
+
+```json
+{
+  "activity_event": {
+    "action": "complete",
+    "task_id": "<task id>",
+    "prior_status": "in_progress",
+    "notes": "<summary>",
+    "verification": {
+      "checks": ["<check performed>"]
+    }
+  },
+  "file_updates": [
+    {
+      "path": "<allowed path>",
+      "content": "<complete file content>"
+    }
+  ]
+}
+```
+
+`file_updates` is legal only with `complete`. The Orchestrator validates schema,
+workflow gates, boundaries, locks, and verification before applying any file
+write.
+
+### Review
+
+When a task is in `review`, a QA-capable actor may approve it or request
+changes:
+
+```json
+{
+  "activity_event": {
+    "action": "review",
+    "task_id": "<task id>",
+    "prior_status": "review",
+    "decision": "approve",
+    "tasks": ["<task id>"]
+  }
+}
+```
+
+`approve` moves the task to `done`. `request_changes` returns it to
+`in_progress`.
+
+## Operating Modes
+
+### Read-only
+
+Use read-only mode when the user asks for inspection, explanation, diagnosis,
+project status, or architectural analysis. No governed transition is started:
+no `claim`, no `complete`, no `review`, and no `file_updates`.
+
+Recommended closure block for read-only responses:
+
+```text
+- Task ID: N/A
+- Summary: <what was inspected>
+- Changed files: None.
+- Tests run: None.
+- ESAA verification: Not run.
+- ESAA closure status: Not applicable - read-only request.
+- Blockers, if any: <blockers>
+```
+
+### Governed execution
+
+Use governed execution when work must be performed against a task: implement,
+fix, refactor, generate files, update docs, or run a roadmap task. The harness
+must admit the task through the state machine instead of letting an agent mutate
+state directly.
+
+### Deterministic no-token execution
+
+When the state transition is known and does not require LLM reasoning,
+`esaa-core` can drive the state machine directly through CLI commands. This
+lets the harness control `claim`, `complete`, `review`, issue handling, hotfixes,
+metrics, projection, and verification without spending tokens.
+
+## Workflow Gates
+
+The Orchestrator applies workflow gates before persistence:
+
+| Gate | Rule | Reject code |
+| --- | --- | --- |
+| WG-001 | `complete` and `review` require the correct previous state | `MISSING_CLAIM` |
+| WG-002 | `complete` requires verification; `file_updates` requires `complete` | `MISSING_VERIFICATION` or `MISSING_COMPLETE` |
+| WG-003 | `prior_status` must match the current projected status | `PRIOR_STATUS_MISMATCH` |
+| WG-004 | Only the actor that claimed a task may complete it | `LOCK_VIOLATION` |
+| WG-005 | One output contains exactly one `activity_event` | `ACTION_COLLAPSE` |
+
+`PRIOR_STATUS_MISMATCH` is treated as context lag and does not consume an
+attempt. Other gate failures may consume attempts according to runtime policy.
+
+## Event Store And Projection
+
+The event store records admitted facts. Projection is a pure replay operation
+that rebuilds read models from events:
+
+```text
+activity.jsonl -> project_events() -> roadmap/issues/lessons -> canonical hash
+```
+
+Verification compares the projected state with stored read models:
 
 ```cmd
 set PYTHONPATH=src
-python -m esaa --root . --help
+python -m esaa --root . verify
 ```
 
-On PowerShell:
+Status meanings:
+
+| Status | Meaning |
+| --- | --- |
+| `ok` | stored read models match deterministic replay |
+| `mismatch` | a read model diverges from replay |
+| `corrupted` | the event store cannot be parsed or sequenced |
+| `unknown` | verification has not established a result |
+
+Projection and verification are the reason ESAA can support audit, replay,
+forensic analysis, and recovery after interrupted runs.
+
+## Roadmaps And Plugins
+
+Planned work may come from the main roadmap or plugins:
+
+- `.roadmap/roadmap.json`
+- `.roadmap/roadmap.security.json`
+- `.roadmap/roadmap.audit.json`
+- `.roadmap/roadmap.fix.json`
+- `.roadmap/roadmap.opt.json`
+- `.roadmap/roadmap.cmm5.json`
+- any recognized `.roadmap/roadmap.*.json`
+
+A roadmap entry without lifecycle events is planned work, not a mismatch. A real
+mismatch occurs when the event log and projection contradict each other, for
+example when the log proves a task is `done` but a read model still shows it as
+`todo`.
+
+## Local Runtime: esaa-core
+
+`esaa-core` is the deterministic runtime in this repository. It exposes the
+Orchestrator operations through `python -m esaa`.
+
+PowerShell:
 
 ```powershell
 $env:PYTHONPATH='src'
 python -m esaa --root . --help
 ```
 
-Available top-level commands:
+CMD:
+
+```cmd
+set PYTHONPATH=src
+python -m esaa --root . --help
+```
+
+Top-level commands:
 
 ```text
 init
@@ -128,27 +369,41 @@ snapshot
 replay
 ```
 
-## Deterministic Task Commands
+The CLI is not a replacement for ESAA. It is a local harness/runtime surface
+that applies ESAA rules.
 
-`task create` is the public way to admit new planned work into the event store.
-It emits `task.create` through the Orchestrator and validates the projected
-`roadmap.json` against `.roadmap/roadmap.schema.json` before append.
+## Common Usage
+
+### Inspect state
+
+```cmd
+set PYTHONPATH=src
+python -m esaa --root . state TASK-ID
+python -m esaa --root . eligible
+python -m esaa --root . metrics
+python -m esaa --root . verify
+```
+
+### Create a task
+
+`task create` emits a deterministic `task.create` event and validates the
+projected roadmap against `.roadmap/roadmap.schema.json`.
 
 ```cmd
 python -m esaa --root . task create README-1803 ^
   --kind spec ^
   --title "Update README" ^
   --description "Refresh public onboarding docs" ^
-  --output readme.md ^
-  --target docs
+  --target documentation ^
+  --output readme.md
 ```
 
-Then drive the state machine without spending LLM tokens:
+### Advance a task without LLM tokens
 
 ```cmd
 python -m esaa --root . claim README-1803 --actor agent-spec
 python -m esaa --root . complete README-1803 --actor agent-spec --check "README reviewed" --file-updates updates.json
-python -m esaa --root . review README-1803 --actor agent-spec --decision approve
+python -m esaa --root . review README-1803 --actor agent-qa --decision approve
 ```
 
 `complete --file-updates` expects a JSON array:
@@ -162,11 +417,25 @@ python -m esaa --root . review README-1803 --actor agent-spec --decision approve
 ]
 ```
 
-## Runner Telemetry
+### Process submitted envelopes
 
-Native provider adapters are optional. When Claude Code, Codex, Antigravity, or
-another external runner opens the project and drives `esaa-core`, the required
-evidence is `runner.metrics`.
+```cmd
+python -m esaa --root . submit --actor agent-spec agent-result.json
+python -m esaa --root . process
+```
+
+Use this when an external harness places agent outputs in the expected inbox or
+hands an explicit result file to the core.
+
+## External Runners And Telemetry
+
+ESAA does not require native Anthropic, OpenAI, or Gemini adapters when the
+agent is an external runner such as Claude Code, Codex, Antigravity, or another
+tool that opens the project and executes the ESAA CLI. In that model, the
+provider-specific environment lives outside the core. The core needs the
+admitted result and telemetry evidence.
+
+`runner.metrics` records external runner evidence:
 
 ```cmd
 python -m esaa --root . runner metrics ^
@@ -181,43 +450,79 @@ python -m esaa --root . runner metrics ^
   --correlation-id CID-README-1803
 ```
 
-Metrics aggregate:
+Metrics can include:
 
 - latency
-- input/output/total tokens when known
+- input, output, and total tokens when known
 - runner kind
 - model
 - status
 - error code
-- workflow gate rejections
+- gate rejection counts
 - attempt counts
 
-Unknown provider values remain `null` or absent from numeric totals. The core
-does not invent tokens or costs.
+Unknown provider values remain `null` or absent from numeric aggregates. The
+core does not invent token usage or cost.
+
+The generic HTTP adapter remains useful when an LLM endpoint can accept a
+dispatch context and return an ESAA agent result envelope:
+
+```powershell
+$env:PYTHONPATH='src'
+$env:ESAA_LLM_URL='http://127.0.0.1:8080/agent'
+$env:ESAA_LLM_TOKEN='<optional-token>'
+python -m esaa --root . run --adapter http --steps 2
+```
+
+## Parallel Dispatch And Write Conflicts
+
+`eligible` reports executable tasks and `parallel_groups`:
+
+```cmd
+python -m esaa --root . eligible
+python -m esaa --root . run --parallel 4 --until-done
+```
+
+Parallel waves run independent tasks concurrently while preserving serial append
+to `activity.jsonl`. The Orchestrator remains the only writer.
+
+Write conflict policy covers:
+
+- exact file conflicts, such as `docs/spec/a.md` vs `docs/spec/a.md`
+- directory-prefix conflicts, such as `docs/spec/` vs `docs/spec/a.md`
+- hotfix writes constrained by `scope_patch`
+- effective `file_updates.path` conflicts admitted in the same wave
+
+Conflicting writes are rejected before the second side effect is applied.
 
 ## Hotfix Workflow
 
-Completed tasks are immutable. A defect in a `done` task is represented as a new
-issue and a new hotfix task:
+A completed task is immutable. A defect in a `done` task follows this flow:
 
 ```text
-issue.report -> hotfix.create -> claim -> complete -> review -> issue.resolve
+issue.report -> hotfix.create -> claim -> complete -> review(approve) -> issue.resolve
 ```
 
-Hotfix `complete` requires at least two `verification.checks`, `issue_id`, and
-`fixes`. File writes must stay inside `scope_patch`.
+Hotfix tasks require:
 
-Deterministic commands:
+- reference to the original `issue_id`
+- reference to the task being fixed
+- `scope_patch`
+- at least two verification checks on `complete`
+- final `issue.resolve` after approval
+
+Example:
 
 ```cmd
 python -m esaa --root . issue report T-1000 --actor agent-qa --issue-id ISS-1 --severity medium --title "Issue" --symptom "Observed problem" --repro-step "Reproduce it" --fixes T-1000
 python -m esaa --root . hotfix create --issue-id ISS-1 --fixes T-1000 --scope-patch src/hotfix/
 python -m esaa --root . claim HF-ISS-1 --actor agent-hotfix
-python -m esaa --root . complete HF-ISS-1 --actor agent-hotfix --check unit --check regression --file-updates updates.json
-python -m esaa --root . review HF-ISS-1 --actor agent-hotfix --decision approve
+python -m esaa --root . complete HF-ISS-1 --actor agent-hotfix --issue-id ISS-1 --fixes T-1000 --check unit --check regression --file-updates updates.json
+python -m esaa --root . review HF-ISS-1 --actor agent-qa --decision approve
+python -m esaa --root . issue resolve --issue-id ISS-1 --hotfix-task-id HF-ISS-1
 ```
 
-Demonstration scenario:
+Operational scenario:
 
 ```cmd
 python -m esaa --root . scenario hotfix
@@ -227,30 +532,11 @@ python -m esaa --root . scenario hotfix --current --issue-id ISS-DEMO
 The default scenario uses a temporary workspace. `--current` appends real events
 to the current repository.
 
-## Parallel Dispatch And Write Conflicts
-
-`eligible` reports executable tasks and `parallel_groups`.
-
-```cmd
-python -m esaa --root . eligible
-python -m esaa --root . run --parallel 4 --until-done
-```
-
-The runtime prevents conflicting writes in concurrent waves:
-
-- exact path conflict: `docs/spec/a.md` vs `docs/spec/a.md`
-- directory-prefix conflict: `docs/spec/` vs `docs/spec/a.md`
-- distinct paths remain parallelizable
-
-If an effective write set conflicts with an already admitted write in the same
-wave, the Orchestrator emits `output.rejected` with `WRITE_CONFLICT` and applies
-no second file side effect.
-
 ## Snapshots And Compaction
 
-Snapshots capture projected state and replay evidence. Staged compaction writes
-a snapshot, event archive, tail file, and manifest while preserving the live
-event store.
+Snapshots capture projected state and replay evidence at an event boundary.
+Compaction is staged and auditable: it writes a snapshot, archive, tail, and
+manifest instead of silently destroying history.
 
 ```cmd
 python -m esaa --root . snapshot --before 100 --dry-run
@@ -260,64 +546,72 @@ python -m esaa --root . snapshot --before 100 --compact
 
 Compaction refuses unsafe states:
 
-- missing or mismatched roadmap projection
 - `verify_status != ok`
-- `--before` above the last `verify.ok`
-- missing archive/tail during replay checks
+- missing or mismatched projections
+- `--before` above the last verified event
+- missing archive or tail during replay checks
+
+## Lessons
+
+Lessons are projected from `.roadmap/lessons.json` and injected by the
+Orchestrator when relevant. Active lessons are constraints, not suggestions.
+
+Current core lessons include:
+
+- never collapse `claim` and `complete` in one output
+- never include `file_updates` without `action=complete`
+- always include coherent `prior_status`
+
+This makes repeated failures teach the protocol without relying on a human to
+remember every historical rejection.
 
 ## Vocabulary Evolution
 
-The paper and older profiles may mention `promote`, `phase.complete`,
-`backlog`, or `ready`. In core v0.4.1 these are historical or profile-specific
-terms, not active core actions.
+The paper and older snapshots may mention terms such as `promote`,
+`phase.complete`, `backlog`, or `ready`. In core v0.4.1, those are historical
+terms or profile-specific vocabulary. The active core machine uses:
+
+- statuses: `todo`, `in_progress`, `review`, `done`
+- actions: `claim`, `complete`, `review`, `issue.report`
+
+Inspect mappings:
 
 ```cmd
 python -m esaa --root . vocabulary
 python -m esaa --root . vocabulary --profile core-v0.4.1
 ```
 
-Core v0.4.1 uses:
+## Administrative Commands
 
-- statuses: `todo`, `in_progress`, `review`, `done`
-- actions: `claim`, `complete`, `review`, `issue.report`
-
-## Verification
-
-Verify reconstructs the read models from the event store and compares the
-projection hash.
-
-```cmd
-python -m esaa --root . verify
-python -m esaa --root . project
-python -m esaa --root . replay --no-write
-```
-
-Status meanings:
-
-| Status | Meaning |
-| --- | --- |
-| `ok` | projected read model matches the event store |
-| `mismatch` | stored projection diverges from replay |
-| `corrupted` | event store cannot be parsed or has invalid sequence |
-
-## Administrative Activity Command
-
-`activity clear` is destructive and exists for deliberate resets. It always
-creates a backup first.
+Clear the event store only when deliberately resetting a workspace. The command
+creates a backup first:
 
 ```cmd
 python -m esaa --root . activity clear --force
 ```
 
-Use `--dry-run` before destructive cleanup:
+Use dry-run when available before destructive operations:
 
 ```cmd
 python -m esaa --root . activity clear --force --dry-run
 ```
 
+Reproject read models:
+
+```cmd
+python -m esaa --root . project
+```
+
+Replay without writing:
+
+```cmd
+python -m esaa --root . replay --no-write
+```
+
 ## Development
 
-Run the full test suite:
+Install dependencies in a virtual environment if desired, then run the test
+suite with the local source path:
 
 ```cmd
 set PYTHONPATH=src
@@ -326,16 +620,16 @@ python -m pytest -q
 
 Current coverage includes:
 
-- state machine transitions
 - strict agent result validation
-- deterministic CLI commands
+- state machine transitions
+- deterministic task commands
 - roadmap plugin eligibility
 - external runner telemetry
 - hotfix lifecycle and production trace
 - parallel dispatch and write conflicts
 - snapshot and staged compaction
 - vocabulary mapping
-- file locking for append-only writes
+- filesystem locking for append-only writes
 - schema strictness for `task create`
 
 ## Operational Rules
@@ -344,9 +638,14 @@ Current coverage includes:
 - Do not edit read models by hand; reproject them from the event store.
 - Do not mark tasks `done` directly; only approved review can do that.
 - Do not reopen `done` tasks; use hotfix.
-- Treat `PRIOR_STATUS_MISMATCH` as context lag, not task completion.
+- Do not treat ESAA as a mere harness; the harness is one layer governed by
+  ESAA.
+- Do not assume native provider adapters are required when the real runner is
+  Claude Code, Codex, Antigravity, or another external agent tool.
 - Prefer deterministic commands when the state machine can advance without an
   LLM call.
+- Treat projection drift as a state integrity issue, not as a reason to
+  hand-edit projections.
 
 ## Citation
 
@@ -366,4 +665,3 @@ MIT
 ## Author
 
 Elzo Brito dos Santos Filho
-
