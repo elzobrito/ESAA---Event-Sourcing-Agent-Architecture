@@ -2,83 +2,45 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
-
-from esaa.adapters.base import AgentAdapter
 from esaa.service import ESAAService
 from esaa.store import parse_event_store
 
 
-class HotfixLifecycleAdapter(AgentAdapter):
-    agent_id = "agent-hotfix"
-
-    def health(self) -> dict[str, str]:
-        return {"status": "ok"}
-
-    def execute(self, dispatch_context: dict[str, Any]) -> dict[str, Any]:
-        task = dispatch_context["task"]
-        task_id = task["task_id"]
-        status = task["status"]
-
-        if task_id == "T-1000":
-            return {
-                "activity_event": {
-                    "action": "issue.report",
-                    "task_id": task_id,
-                    "prior_status": "todo",
-                    "issue_id": "ISS-HOTFIX",
-                    "severity": "medium",
-                    "title": "Done task needs hotfix path",
-                    "fixes": "ISS-HOTFIX",
-                    "evidence": {
-                        "symptom": "hotfix workflow must be exercised",
-                        "repro_steps": ["run hotfix lifecycle test"],
-                    },
-                }
-            }
-
-        if status == "todo":
-            return {
-                "activity_event": {
-                    "action": "claim",
-                    "task_id": task_id,
-                    "prior_status": "todo",
-                }
-            }
-
-        if status == "in_progress":
-            return {
-                "activity_event": {
-                    "action": "complete",
-                    "task_id": task_id,
-                    "prior_status": "in_progress",
-                    "issue_id": task["issue_id"],
-                    "fixes": task["fixes"],
-                    "verification": {"checks": ["unit", "regression"]},
-                },
-                "file_updates": [
-                    {"path": task["outputs"]["files"][0], "content": "# hotfix\n"}
-                ],
-            }
-
-        return {
-            "activity_event": {
-                "action": "review",
-                "task_id": task_id,
-                "prior_status": "review",
-                "decision": "approve",
-                "tasks": [task_id],
-            }
-        }
-
-
 def test_hotfix_lifecycle_emits_issue_resolve_after_hotfix_review(contract_bundle: Path) -> None:
-    service = ESAAService(contract_bundle, adapter=HotfixLifecycleAdapter())
+    service = ESAAService(contract_bundle)
     service.init(force=True)
 
-    result = service.run(steps=4)
+    service.claim_task("T-1000", actor="agent-spec")
+    service.complete_task(
+        "T-1000",
+        actor="agent-spec",
+        checks=["baseline"],
+        file_updates=[{"path": "docs/T-1000.md", "content": "# T-1000\n"}],
+    )
+    service.review_task("T-1000", actor="agent-spec", decision="approve")
 
-    assert result["steps_executed"] == 4
+    service.report_issue(
+        "T-1000",
+        actor="agent-qa",
+        issue_id="ISS-HOTFIX",
+        severity="medium",
+        title="Done task needs hotfix path",
+        symptom="hotfix workflow must be exercised against an immutable done task",
+        repro_steps=["run hotfix lifecycle test"],
+        fixes="T-1000",
+    )
+    hotfix_task_id = "HF-ISS-HOTFIX"
+    service.claim_task(hotfix_task_id, actor="agent-hotfix")
+    service.complete_task(
+        hotfix_task_id,
+        actor="agent-hotfix",
+        checks=["unit", "regression"],
+        file_updates=[{"path": "src/hotfix/HF-ISS-HOTFIX.txt", "content": "hotfix\n"}],
+        issue_id="ISS-HOTFIX",
+        fixes="T-1000",
+    )
+    service.review_task(hotfix_task_id, actor="agent-hotfix", decision="approve")
+
     events = parse_event_store(contract_bundle)
     actions = [event["action"] for event in events]
     assert "issue.report" in actions

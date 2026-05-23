@@ -228,6 +228,26 @@ changes:
 `approve` moves the task to `done`. `request_changes` returns it to
 `in_progress`.
 
+**Role-based authorization (default).** Since v0.4.1,
+`.roadmap/RUNTIME_POLICY.yaml#review_authorization` defaults to `"qa_role"`:
+
+- `complete` continues to require `actor == assigned_to` (owner lock preserved).
+- `review` requires `runtime_policy.resolve_role(actor) ∈ {qa, orchestrator}`.
+  An owner without a QA role attempting to review their own work is rejected
+  with `REVIEW_ROLE_VIOLATION`.
+
+Role resolution checks `.roadmap/agents_swarm.yaml` (`agents[<actor>].role`)
+and falls back to a name heuristic (`agent-qa*` → "qa";
+`agent-orchestrator*` → "orchestrator"). Set `review_authorization: "owner"`
+to restore the legacy mode where the owner reviews their own task.
+
+### Issue report on `done`
+
+`issue.report` is the only action permitted on a `done` task. The schema
+allows `prior_status="done"` exclusively for this action, preserving forensic
+evidence about the immutable task. All other actions on `done` are rejected
+with `IMMUTABLE_DONE_VIOLATION`.
+
 ## Operating Modes
 
 ### Read-only
@@ -273,9 +293,16 @@ The Orchestrator applies workflow gates before persistence:
 | WG-003 | `prior_status` must match the current projected status | `PRIOR_STATUS_MISMATCH` |
 | WG-004 | Only the actor that claimed a task may complete it | `LOCK_VIOLATION` |
 | WG-005 | One output contains exactly one `activity_event` | `ACTION_COLLAPSE` |
+| WG-006 | Any action on `done` (except `issue.report`) is rejected | `IMMUTABLE_DONE_VIOLATION` |
+| WG-007 | Under `review_authorization=qa_role`, reviewer must have role `qa`/`orchestrator` | `REVIEW_ROLE_VIOLATION` |
 
 `PRIOR_STATUS_MISMATCH` is treated as context lag and does not consume an
 attempt. Other gate failures may consume attempts according to runtime policy.
+
+The canonical vocabulary of all reject codes is centralized in
+`src/esaa/reject_codes.py` (`WORKFLOW_GATE_CODES`, `OPERATIONAL_CODES`,
+`HOTFIX_CODES`, `ALL_CODES`). `tests/test_reject_codes_inventory.py` asserts
+every `ESAAError(code, ...)` emitted in the engine is registered.
 
 ## Event Store And Projection
 
@@ -511,6 +538,22 @@ Hotfix tasks require:
 - at least two verification checks on `complete`
 - final `issue.resolve` after approval
 
+**Validation codes.** `build_hotfix_event` calls `validate_hotfix_request`
+internally and raises `ESAAError` with one of the following structured codes
+when the request is invalid:
+
+| Code | Meaning |
+| --- | --- |
+| `HOTFIX_ISSUE_NOT_FOUND` | `issue_id` absent or not present in projection |
+| `HOTFIX_ISSUE_NOT_OPEN` | issue exists but is already resolved |
+| `HOTFIX_TARGET_NOT_FOUND` | `fixes` points to a non-existent task |
+| `HOTFIX_TARGET_NOT_DONE` | target is immutable-done but its status is not `done` |
+| `HOTFIX_SCOPE_INVALID` | `scope_patch` empty or missing |
+| `HOTFIX_ALREADY_EXISTS` | duplicate hotfix for the same `issue_id` |
+
+`validate_hotfix_request` is also exported for direct callers (tests, audit
+checkers) that want validation without producing an event.
+
 Example:
 
 ```cmd
@@ -551,6 +594,65 @@ Compaction refuses unsafe states:
 - `--before` above the last verified event
 - missing archive or tail during replay checks
 
+## File Effects And Atomic Transactions
+
+Since v0.4.1, `file_updates` produced by an agent on `complete` go through a
+three-stage transaction that prevents partial writes when the append fails:
+
+```text
+stage_and_compute (file_effects.py)
+  -> append_transactional (store.py)        # parse + revalidate + decide-seq + append + project
+    -> commit_staged (file_effects.py)      # os.replace into final paths
+       on failure -> discard_staged
+```
+
+The `orchestrator.file.write` event carries forensic metadata about every
+applied effect:
+
+```json
+{
+  "task_id": "<task>",
+  "files": ["<path>"],
+  "effects": [
+    {
+      "path": "<path>",
+      "before_sha256": "<sha|null>",
+      "after_sha256": "<sha>",
+      "bytes": <n>,
+      "encoding": "utf-8",
+      "artifact_sha256": "<sha>",
+      "artifact_path": ".roadmap/artifacts/file-effects/<sha>.json"
+    }
+  ]
+}
+```
+
+Each effect's content is also persisted as a content-addressed artifact in
+`.roadmap/artifacts/file-effects/<sha>.json`, enabling deterministic
+replay/audit. `file_effects.verify_artifact()` returns `ARTIFACT_MISSING`,
+`ARTIFACT_HASH_MISMATCH`, or `ARTIFACT_CONTENT_HASH_MISMATCH` on tampering.
+
+Recovery after interruption is automatic: `service.recover_file_effects()`
+(CLI: `esaa recover-file-effects`) re-applies effects from admitted events
+that did not commit. Staged files that never reached commit are cleaned by
+`cleanup_orphan_staging()`.
+
+### Serializable append
+
+`store.append_transactional(root, build_events_fn, expected_first_seq, expected_projection_hash)`
+acquires the file lock on `activity.jsonl.lock`, re-parses the store inside
+the critical section, validates expected sequence and projection hash, and
+only then commits the new events plus projections. Reject codes:
+
+| Code | Meaning |
+| --- | --- |
+| `STORE_LOCK_TIMEOUT` | lock not acquired within timeout |
+| `STALE_STATE_SEQ` | `expected_first_seq` no longer matches `next_event_seq` |
+| `STALE_STATE_HASH` | `expected_projection_hash` no longer matches |
+
+Concurrent multi-process appends cannot produce duplicate `event_seq` or stale
+projections.
+
 ## Lessons
 
 Lessons are projected from `.roadmap/lessons.json` and injected by the
@@ -564,6 +666,12 @@ Current core lessons include:
 
 This makes repeated failures teach the protocol without relying on a human to
 remember every historical rejection.
+
+**Baseline lessons reseed by event.** `service.init` emits an
+`orchestrator.view.mutate(target=lessons, change=baseline_reseed)` event
+carrying the canonical `BASELINE_LESSONS` (LES-0001/2/3). The projector
+reconstructs `lessons.json` deterministically from replay — no manual edit
+of the read model is needed, and lessons survive `esaa project`/`esaa replay`.
 
 ## Vocabulary Evolution
 

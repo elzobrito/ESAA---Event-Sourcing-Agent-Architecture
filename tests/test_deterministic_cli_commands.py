@@ -99,6 +99,25 @@ def test_cli_reject_issue_hotfix_and_resolve_are_deterministic_orchestrator_comm
     )
     assert rejected["action"] == "output.rejected"
 
+    updates = contract_bundle / "hotfix-target-updates.json"
+    updates.write_text(
+        json.dumps([{"path": "docs/spec/T-1000.md", "content": "# Done target\n"}]),
+        encoding="utf-8",
+    )
+    _run_cli(contract_bundle, "claim", "T-1000", "--actor", "agent-spec")
+    _run_cli(
+        contract_bundle,
+        "complete",
+        "T-1000",
+        "--actor",
+        "agent-spec",
+        "--check",
+        "target complete",
+        "--file-updates",
+        str(updates),
+    )
+    _run_cli(contract_bundle, "review", "T-1000", "--actor", "agent-spec", "--decision", "approve")
+
     issue = _run_cli(
         contract_bundle,
         "issue",
@@ -126,7 +145,7 @@ def test_cli_reject_issue_hotfix_and_resolve_are_deterministic_orchestrator_comm
         "--issue-id",
         "ISS-CLI",
         "--fixes",
-        "ISS-CLI",
+        "T-1000",
         "--scope-patch",
         "src/hotfix/",
     )
@@ -251,10 +270,15 @@ def test_cli_activity_clear_requires_force_and_reprojects_empty_state(contract_b
 
     assert cleared["status"] == "cleared"
     assert cleared["events_removed"] == len(before)
-    assert cleared["last_event_seq"] == 0
+    assert cleared["last_event_seq"] == 3
     assert cleared["verify_status"] == "ok"
-    assert parse_event_store(contract_bundle) == []
-    assert (contract_bundle / ".roadmap" / "activity.jsonl").read_text(encoding="utf-8") == ""
+    events_after_clear = parse_event_store(contract_bundle)
+    assert [event["action"] for event in events_after_clear] == [
+        "orchestrator.view.mutate",
+        "verify.start",
+        "verify.ok",
+    ]
+    assert (contract_bundle / ".roadmap" / "activity.jsonl").read_text(encoding="utf-8").strip()
 
     backup = contract_bundle / cleared["backup_path"]
     assert backup.exists()

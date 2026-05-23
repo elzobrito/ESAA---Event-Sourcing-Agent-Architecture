@@ -10,6 +10,65 @@ from pathlib import Path
 
 SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
+def _load_events(root: Path) -> list[dict]:
+    path = root / ".roadmap/activity.jsonl"
+    if not path.exists():
+        return []
+    events = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            events.append(json.loads(line))
+    return events
+
+def check_done_evidence(root: Path) -> list[dict]:
+    """Detect done tasks that lack the governed claim/complete/review evidence trail."""
+    findings = []
+    try:
+        sys.path.insert(0, str(root / "src"))
+        from esaa.projector import materialize
+
+        events = _load_events(root)
+        roadmap, _, _ = materialize(events)
+    except Exception as exc:
+        return [{"id": "R-DONE-EVIDENCE-ERR", "severity": "low",
+                 "title": "could not inspect done task evidence",
+                 "evidence": {"error": str(exc)}}]
+
+    by_task: dict[str, list[dict]] = {}
+    for event in events:
+        task_id = (event.get("payload") or {}).get("task_id")
+        if task_id:
+            by_task.setdefault(task_id, []).append(event)
+
+    for task in roadmap.get("tasks", []):
+        if task.get("status") != "done":
+            continue
+        task_id = task["task_id"]
+        trail = by_task.get(task_id, [])
+        actions = [event.get("action") for event in trail]
+        complete_events = [e for e in trail if e.get("action") == "complete"]
+        review_events = [e for e in trail if e.get("action") == "review"]
+        missing = []
+        if "claim" not in actions:
+            missing.append("claim")
+        if not complete_events:
+            missing.append("complete")
+        if not any((e.get("payload") or {}).get("verification", {}).get("checks") for e in complete_events):
+            missing.append("verification.checks")
+        if not any((e.get("payload") or {}).get("decision") == "approve" for e in review_events):
+            missing.append("review.approve")
+        if task.get("is_hotfix") and not any(
+            e.get("action") == "issue.resolve"
+            and (e.get("payload") or {}).get("hotfix_task_id") == task_id
+            for e in events
+        ):
+            missing.append("issue.resolve")
+        if missing:
+            findings.append({"id": "R-DONE-EVIDENCE-MISSING", "severity": "medium",
+                             "title": f"{task_id} done without complete evidence trail",
+                             "evidence": {"task_id": task_id, "missing": missing}})
+    return findings
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=".")
@@ -30,9 +89,11 @@ def main() -> int:
                                  "title": f"{les['lesson_id']} sem source_ref de gate",
                                  "evidence": {"types": sorted(kinds)}})
 
+    findings.extend(check_done_evidence(root))
+
     # Agregacao dos demais checkers (se presentes)
     aggregated = []
-    for name in ("contract_consistency.py", "schema_conformance.py", "eventstore_integrity.py"):
+    for name in ("contract_consistency.py", "schema_conformance.py", "eventstore_integrity.py", "critical_findings.py"):
         script = audit_dir / name
         if script.exists():
             try:

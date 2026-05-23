@@ -130,7 +130,11 @@ def _apply_review(state: dict[str, Any], event: dict[str, Any]) -> None:
     task = _task_by_id(state, event["payload"]["task_id"])
     decision = event["payload"].get("decision")
     _check_transition(task, "review")
-    _ensure_owner(task, event["actor"])
+    # FIX-1807: review autoriza-se por owner (legado) ou por role qa/orchestrator.
+    # O service injeta '_reviewer_role' no payload apos resolver runtime_policy.
+    reviewer_role = event["payload"].get("_reviewer_role")
+    if reviewer_role not in {"qa", "orchestrator"}:
+        _ensure_owner(task, event["actor"])
     if decision == "approve":
         task["status"] = "done"
         task["completed_at"] = event["ts"]

@@ -10,16 +10,26 @@ from __future__ import annotations
 import argparse, json, re
 from pathlib import Path
 
-DOC_REJECT_CODES = {
-    "MISSING_CLAIM", "MISSING_COMPLETE", "MISSING_VERIFICATION",
-    "PRIOR_STATUS_MISMATCH", "LOCK_VIOLATION", "ACTION_COLLAPSE",
-    "IMMUTABLE_DONE_VIOLATION",
-}
-ENGINE_ERROR_CODES = {
-    "SCHEMA_INVALID", "UNKNOWN_ACTION", "WORKFLOW_GATE", "BOUNDARY_VIOLATION",
-    "IMMUTABLE_DONE", "LOCKED_TASK", "INVALID_TRANSITION", "NOT_LOCK_OWNER",
-    "TASK_NOT_FOUND", "DUPLICATE_TASK", "ISSUE_NOT_FOUND",
-}
+# M-04: vocabulario canonico de reject_codes vem de src/esaa/reject_codes.py.
+# Importacao defensiva: se PYTHONPATH=src nao estiver setado, cai para fallback
+# textual (mantem o checker funcional fora do dev environment).
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+    from esaa.reject_codes import ALL_CODES as _RC_ALL, WORKFLOW_GATE_CODES as _RC_WG
+    DOC_REJECT_CODES = frozenset(_RC_WG)
+    ENGINE_ERROR_CODES = frozenset(_RC_ALL)
+except Exception:
+    DOC_REJECT_CODES = frozenset({
+        "MISSING_CLAIM", "MISSING_COMPLETE", "MISSING_VERIFICATION",
+        "PRIOR_STATUS_MISMATCH", "LOCK_VIOLATION", "ACTION_COLLAPSE",
+        "IMMUTABLE_DONE_VIOLATION",
+    })
+    ENGINE_ERROR_CODES = frozenset({
+        "SCHEMA_INVALID", "UNKNOWN_ACTION", "WORKFLOW_GATE_VIOLATION", "BOUNDARY_VIOLATION",
+        "IMMUTABLE_DONE_VIOLATION", "LOCK_VIOLATION", "TASK_NOT_FOUND",
+        "DUPLICATE_TASK", "ISSUE_NOT_FOUND",
+    })
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -65,6 +75,64 @@ def main() -> int:
                 "evidence": {"dot": dot, "underscore": underscore},
                 "recommendation": "Padronizar para um unico separador.",
             })
+
+    # FIX-1812: runner.metrics deve estar em todas as fontes canonicas
+    rm_sources = {
+        "AGENT_CONTRACT.yaml(reserved)": "runner.metrics" in (root / ".roadmap/AGENT_CONTRACT.yaml").read_text(encoding="utf-8") if (root / ".roadmap/AGENT_CONTRACT.yaml").exists() else False,
+        "ORCHESTRATOR_CONTRACT.yaml(reserved)": "runner.metrics" in (root / ".roadmap/ORCHESTRATOR_CONTRACT.yaml").read_text(encoding="utf-8") if (root / ".roadmap/ORCHESTRATOR_CONTRACT.yaml").exists() else False,
+        "constants.py(CANONICAL_ACTIONS)": "runner.metrics" in (root / "src/esaa/constants.py").read_text(encoding="utf-8") if (root / "src/esaa/constants.py").exists() else False,
+        "AGENTS.md": "runner.metrics" in (root / "AGENTS.md").read_text(encoding="utf-8") if (root / "AGENTS.md").exists() else False,
+        ".claude/CLAUDE.md": "runner.metrics" in (root / ".claude/CLAUDE.md").read_text(encoding="utf-8") if (root / ".claude/CLAUDE.md").exists() else False,
+    }
+    missing_rm = [k for k, v in rm_sources.items() if not v]
+    if missing_rm:
+        findings.append({
+            "id": "R-RUNNER-METRICS-DRIFT", "severity": "medium",
+            "title": "runner.metrics ausente em fonte canonica",
+            "evidence": {"missing_in": missing_rm},
+            "recommendation": "Adicionar runner.metrics a todas as fontes do vocabulario reservado.",
+        })
+
+    # M-05: prior_status enum drift entre contract YAML e schema JSON
+    try:
+        import yaml as _yaml
+        ag_path = root / ".roadmap/AGENT_CONTRACT.yaml"
+        sch_path = root / ".roadmap/agent_result.schema.json"
+        if ag_path.exists() and sch_path.exists():
+            ag = _yaml.safe_load(ag_path.read_text(encoding="utf-8")) or {}
+            sch = json.loads(sch_path.read_text(encoding="utf-8"))
+            yaml_allowed = set(
+                ag.get("output_contract", {})
+                  .get("activity_event", {})
+                  .get("prior_status", {})
+                  .get("allowed_values", [])
+            )
+            schema_enum = set(
+                sch.get("properties", {})
+                   .get("activity_event", {})
+                   .get("properties", {})
+                   .get("prior_status", {})
+                   .get("enum", [])
+            )
+            if yaml_allowed != schema_enum:
+                findings.append({
+                    "id": "R-PRIOR-STATUS-ENUM-DRIFT", "severity": "medium",
+                    "title": "prior_status enum diverge entre AGENT_CONTRACT.yaml e agent_result.schema.json",
+                    "evidence": {
+                        "yaml_allowed_values": sorted(yaml_allowed),
+                        "schema_enum": sorted(schema_enum),
+                        "only_in_yaml": sorted(yaml_allowed - schema_enum),
+                        "only_in_schema": sorted(schema_enum - yaml_allowed),
+                    },
+                    "recommendation": "Alinhar AGENT_CONTRACT.yaml#prior_status.allowed_values com agent_result.schema.json enum.",
+                })
+    except Exception as exc:
+        findings.append({
+            "id": "R-PRIOR-STATUS-CHECK-FAILED", "severity": "low",
+            "title": "Falha ao executar check_prior_status_enum_drift",
+            "evidence": {"error": str(exc)[:120]},
+            "recommendation": "Verificar manualmente alinhamento entre AGENT_CONTRACT e agent_result.schema.",
+        })
 
     print(json.dumps({"checker": "contract_consistency", "findings": findings}, indent=2, ensure_ascii=False))
     return 0

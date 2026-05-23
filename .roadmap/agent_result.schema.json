@@ -21,9 +21,9 @@
           "minLength": 1
         },
         "prior_status": {
-          "$comment": "Status da tarefa no roadmap no momento da invocação. Declarado pelo agente e validado pelo Orchestrator via WG-003 antes de qualquer transição.",
+          "$comment": "Status da tarefa no roadmap no momento da invocação. Declarado pelo agente e validado pelo Orchestrator via WG-003 antes de qualquer transição. FIX-1810: 'done' é permitido apenas quando action='issue.report' (preserva evidência sobre tarefa imutável).",
           "type": "string",
-          "enum": ["todo", "in_progress", "review"]
+          "enum": ["todo", "in_progress", "review", "done"]
         },
         "notes": {
           "type": "string"

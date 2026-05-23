@@ -148,6 +148,11 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("eligible", help="list eligible tasks and parallel groups")
     sub.add_parser("metrics", help="emit structured runtime metrics")
 
+    cmd_effects = sub.add_parser("effects", help="file effect recovery commands")
+    effects_sub = cmd_effects.add_subparsers(dest="effects_command", required=True)
+    cmd_effects_recover = effects_sub.add_parser("recover", help="reapply missing file effects from artifacts")
+    cmd_effects_recover.add_argument("--dry-run", action="store_true")
+
     cmd_runner = sub.add_parser("runner", help="external runner telemetry commands")
     runner_sub = cmd_runner.add_subparsers(dest="runner_command", required=True)
     cmd_runner_metrics = runner_sub.add_parser("metrics", help="record external runner metrics")
@@ -308,6 +313,8 @@ def main(argv: list[str] | None = None) -> int:
             result = service.eligible()
         elif args.command == "metrics":
             result = service.metrics()
+        elif args.command == "effects" and args.effects_command == "recover":
+            result = service.recover_file_effects(dry_run=args.dry_run)
         elif args.command == "runner" and args.runner_command == "metrics":
             if args.file:
                 payload = _read_json_arg(args.file)

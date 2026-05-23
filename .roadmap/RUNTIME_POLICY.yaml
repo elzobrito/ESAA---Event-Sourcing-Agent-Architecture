@@ -1,4 +1,6 @@
-version: "0.4.0"
+version: "0.4.1"
+
+review_authorization: "qa_role"
 
 attempt_lifecycle:
   ttl: "PT30M"
@@ -32,4 +34,3 @@ verify_policy:
   snapshot_retention:
     max_snapshots: 20
     cleanup_policy: "oldest_first"
-

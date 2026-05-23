@@ -536,6 +536,7 @@ contexto, com re-injeção do status correto.
 - `verify.start`
 - `verify.ok`
 - `verify.fail`
+- `runner.metrics`  <!-- FIX-1812 — telemetria de runners externos (Claude Code, Codex) -->
 
 **Estados de tarefa:**
 
@@ -550,3 +551,110 @@ Uma action por invocação, `prior_status` sempre presente e coerente, `file_upd
 só com `complete`, output governado é JSON puro, Codex não aplica efeitos diretamente,
 você nunca escreve no event store nem toca em `done`; na dúvida, emita `issue.report`
 com evidence.
+
+---
+
+## 18. Novidades 0.4.1+
+
+Mecânicas adicionadas após o baseline 0.4.0. Operadores e agentes novos devem
+ler esta seção para entender o estado atual do contrato.
+
+### 18.1 `runner.metrics` reservado ao Orchestrator
+
+Telemetria de runners externos (Claude Code, Codex, Antigravity) é registrada
+como evento `runner.metrics` no event store. **Nunca emitido por agentes** —
+fica em `vocabulary.reserved_orchestrator_actions`. Payload mínimo: `runner_id`,
+`task_id` (opcional), `metrics: { tokens_input, tokens_output, duration_ms,
+model, session_id }`.
+
+### 18.2 `prior_status="done"` em `issue.report`
+
+`prior_status` enum agora aceita `"done"`, mas **apenas** quando
+`action=issue.report`. As demais actions (claim/complete/review) são
+bloqueadas pelos `const` no `allOf` do `agent_result.schema.json`. Permite
+reportar problemas em tarefa imutável preservando evidência forense.
+
+> Coercion: action=issue.report + task em done → prior_status DEVE ser 'done'.
+
+### 18.3 Review por QA independente é o padrão
+
+`RUNTIME_POLICY.yaml#review_authorization` defaulta para **`"qa_role"`**.
+Implicações:
+
+- `complete` continua exigindo `actor == assigned_to` (owner lock).
+- `review` agora exige `runtime_policy.resolve_role(actor) ∈ {qa, orchestrator}`.
+- Tentativa de owner reviewar sem role QA → `REVIEW_ROLE_VIOLATION`.
+
+O service injeta `_reviewer_role` no payload do evento `review` após resolver
+via `agents_swarm.yaml` ou heurística (`agent-qa*` → "qa").
+
+### 18.4 `orchestrator.file.write` carrega metadata forense
+
+Payload de `orchestrator.file.write` agora contém `effects[]` com:
+
+```
+{ "path": "...", "before_sha256": "...|null", "after_sha256": "...",
+  "bytes": N, "encoding": "utf-8",
+  "artifact_sha256": "...", "artifact_path": ".roadmap/artifacts/file-effects/<sha>.json" }
+```
+
+Artifacts content-addressed permitem replay/audit determinístico. Verificação
+via `file_effects.verify_artifact()` detecta `ARTIFACT_MISSING`,
+`ARTIFACT_HASH_MISMATCH`, `ARTIFACT_CONTENT_HASH_MISMATCH`.
+
+### 18.5 Append serializável (`append_transactional`)
+
+`service.submit/run` usam `_append_events_transactionally` que envolve
+parse + revalidate + decide-seq + append + project sob o mesmo file lock
+(`.roadmap/activity.jsonl.lock`). Rejeições:
+
+- `STALE_STATE_SEQ` — `expected_first_seq` defasado.
+- `STALE_STATE_HASH` — `expected_projection_hash` defasado.
+- `STORE_LOCK_TIMEOUT` — lock não adquirido em `timeout`.
+
+Concorrência multi-processo não produz duplicate `event_seq` (FIX-1806).
+
+### 18.6 Atomic file effects (staging → append → commit)
+
+`file_updates` passam por `.roadmap/staging/` antes do append. Sequência:
+
+1. `stage_and_compute(root, file_updates)` → staged paths + metadata
+2. `append_transactional(...)` persiste eventos
+3. `commit_staged(root, staged)` aplica os arquivos finais via `os.replace`
+
+Em qualquer falha (lock timeout, stale state, boundary violation) →
+`discard_staged()` limpa o staging sem deixar arquivo final. Recover após
+crash via `service.recover_file_effects()`.
+
+### 18.7 Hotfix validado com códigos estruturados
+
+`build_hotfix_event` agora chama `validate_hotfix_request` internamente
+(M-03). Códigos:
+
+| Código | Significado |
+|---|---|
+| `HOTFIX_ISSUE_NOT_FOUND` | issue_id ausente ou desconhecido |
+| `HOTFIX_ISSUE_NOT_OPEN` | issue já resolved |
+| `HOTFIX_TARGET_NOT_FOUND` | `fixes` aponta para task inexistente |
+| `HOTFIX_TARGET_NOT_DONE` | target imutável-done não está done |
+| `HOTFIX_SCOPE_INVALID` | `scope_patch` vazio/ausente |
+| `HOTFIX_ALREADY_EXISTS` | duplicate hotfix para mesmo issue |
+
+### 18.8 Baseline lessons reseed por evento
+
+`service.init` emite `orchestrator.view.mutate(target=lessons, change=baseline_reseed)`
+com `BASELINE_LESSONS` (LES-0001/2/3 completos). O projetor reconstrói
+`lessons.json` por replay — não há mais edição manual do read model.
+
+### 18.9 Plugin dispatch parity (`tasks_with_planned_plugins`)
+
+`service.eligible` e `service.run` consomem o mesmo universo. Plugin tasks
+não admitidas no event store são detectadas via `load_plugin_seeds` e
+admitidas via `task.create` determinístico antes do claim.
+
+### 18.10 Vocabulário canônico de reject codes
+
+`src/esaa/reject_codes.py` é a fonte única dos códigos de erro
+(`WORKFLOW_GATE_CODES`, `OPERATIONAL_CODES`, `HOTFIX_CODES`, `ALL_CODES`).
+Inventory test (`tests/test_reject_codes_inventory.py`) garante que todo
+`ESAAError(code, ...)` emitido no engine tem código registrado.

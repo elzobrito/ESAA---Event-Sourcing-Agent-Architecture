@@ -34,6 +34,7 @@ vocabulary:
     - verify.start
     - verify.ok
     - verify.fail
+    - runner.metrics  # FIX-1812 — external runner telemetry (Claude Code, Codex, etc.)
 
 # ---------------------------------------------------------------------------
 # dispatch_model
@@ -119,12 +120,17 @@ output_contract:
         Status da tarefa no momento em que o agente foi invocado.
         Declarado pelo agente e validado pelo Orchestrator (WG-003).
         Deve corresponder exatamente ao task_status do roadmap na hora da validação.
-      allowed_values: ["todo", "in_progress", "review"]
+        Nota (FIX-1810): 'done' só é válido quando action=issue.report — as demais actions
+        (claim/complete/review) são bloqueadas pelos `const` no `allOf` do
+        `agent_result.schema.json`. Permite reportar problemas em tarefa imutável
+        preservando evidência forense.
+      allowed_values: ["todo", "in_progress", "review", "done"]
       coercion_rules:
         - "action=claim       → prior_status DEVE ser 'todo'"
         - "action=complete    → prior_status DEVE ser 'in_progress'"
         - "action=review      → prior_status DEVE ser 'review'"
-        - "action=issue.report → prior_status pode ser qualquer valor permitido"
+        - "action=issue.report → prior_status pode ser qualquer valor permitido (todo, in_progress, review, done)"
+        - "action=issue.report + task em done → prior_status DEVE ser 'done' (preserva evidência forense; FIX-1810)"
       on_mismatch:
         reject_code: "PRIOR_STATUS_MISMATCH"
         penaliza_counter: false

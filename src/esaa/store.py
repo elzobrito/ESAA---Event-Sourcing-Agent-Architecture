@@ -174,3 +174,81 @@ def require_task(roadmap: dict[str, Any], task_id: str) -> dict[str, Any]:
         if task.get("task_id") == task_id:
             return task
     raise ESAAError("TASK_NOT_FOUND", f"task_id not found: {task_id}")
+
+
+def append_transactional(
+    root: Path,
+    build_events_fn,
+    expected_first_seq: int | None = None,
+    expected_projection_hash: str | None = None,
+    timeout: float = 30.0,
+):
+    """FIX-1806 — Serializable append: parse + validate + decide seq + append + project
+    sob o mesmo lock. Elimina TOCTOU entre leitura e write.
+
+    build_events_fn(current_events: list[dict]) -> list[dict]
+        Recebe os eventos atuais (sob o lock) e devolve a lista de novos eventos
+        a appendar. Deve atribuir event_seq corretos baseados em current_events.
+
+    Raises:
+        ESAAError(STALE_STATE_SEQ): expected_first_seq != next_event_seq atual
+        ESAAError(STALE_STATE_HASH): expected_projection_hash != hash atual
+        ESAAError(STORE_LOCK_TIMEOUT): lock nao adquirido em timeout
+    Returns:
+        dict com last_event_seq, projection_hash_sha256, events_appended.
+    """
+    from .projector import materialize  # lazy import: evita ciclo
+
+    path = ensure_event_store(root)
+    lock_path = _acquire_store_lock(path, timeout=timeout, retry_interval=0.05)
+    try:
+        events = parse_event_store(root)
+
+        if expected_first_seq is not None:
+            actual_next = next_event_seq(events)
+            if actual_next != expected_first_seq:
+                raise ESAAError(
+                    "STALE_STATE_SEQ",
+                    f"expected_first_seq={expected_first_seq} actual={actual_next}",
+                )
+
+        if expected_projection_hash is not None:
+            cur_roadmap, _, _ = materialize(events)
+            cur_hash = cur_roadmap["meta"]["run"]["projection_hash_sha256"]
+            if cur_hash != expected_projection_hash:
+                raise ESAAError(
+                    "STALE_STATE_HASH",
+                    f"expected_hash={expected_projection_hash[:12]}... actual={cur_hash[:12]}...",
+                )
+
+        new_events = build_events_fn(events)
+        if not new_events:
+            roadmap, _, _ = materialize(events)
+            return {
+                "last_event_seq": roadmap["meta"]["run"]["last_event_seq"],
+                "projection_hash_sha256": roadmap["meta"]["run"]["projection_hash_sha256"],
+                "events_appended": 0,
+            }
+
+        # Validacao via materialize antes de persistir
+        final_roadmap, final_issues, final_lessons = materialize(events + new_events)
+
+        # Append (reentrante sob lock atual; usa a logica de newline-guard)
+        existing = path.read_bytes()
+        needs_sep = bool(existing) and not existing.endswith(b"\n")
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            if needs_sep:
+                handle.write("\n")
+            for event in new_events:
+                handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+        save_roadmap(root, final_roadmap)
+        save_issues(root, final_issues)
+        save_lessons(root, final_lessons)
+        return {
+            "last_event_seq": final_roadmap["meta"]["run"]["last_event_seq"],
+            "projection_hash_sha256": final_roadmap["meta"]["run"]["projection_hash_sha256"],
+            "events_appended": len(new_events),
+        }
+    finally:
+        _release_store_lock(lock_path)

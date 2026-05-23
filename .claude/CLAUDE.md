@@ -347,7 +347,7 @@ Após 3 falhas, o harness emite `issue.report severity=high` via Orchestrator e 
 **Ações permitidas ao agente:** `claim`, `complete`, `review`, `issue.report`
 
 **Ações reservadas ao Orchestrator (você nunca emite):**
-`run.start`, `run.end`, `task.create`, `hotfix.create`, `issue.resolve`, `output.rejected`, `orchestrator.file.write`, `orchestrator.view.mutate`, `verify.start`, `verify.ok`, `verify.fail`
+`run.start`, `run.end`, `task.create`, `hotfix.create`, `issue.resolve`, `output.rejected`, `orchestrator.file.write`, `orchestrator.view.mutate`, `verify.start`, `verify.ok`, `verify.fail`, `runner.metrics` (FIX-1812 — telemetria de runners externos).
 
 **Estados de tarefa:** `todo` → `in_progress` → `review` → `done` (com `review→in_progress` em caso de `request_changes`)
 
@@ -356,3 +356,30 @@ Após 3 falhas, o harness emite `issue.report severity=high` via Orchestrator e 
 ## 14. Resumo em uma frase
 
 > Uma action por invocação, `prior_status` sempre presente e coerente, `file_updates` só com `complete`, nunca toque em `done`, na dúvida emita `issue.report` com evidence.
+
+---
+
+## 15. Novidades 0.4.1+
+
+Mecânicas adicionadas após o baseline 0.4.0 que o agente deve assumir como
+default em vigor.
+
+1. **`runner.metrics` reservado ao Orchestrator** — telemetria de runners externos (Claude Code, Codex, Antigravity). Nunca emitido por agentes.
+
+2. **`prior_status="done"` em `issue.report`** — única action que aceita `done`. Permite reportar bug em tarefa imutável com evidência forense preservada. As outras actions continuam bloqueadas via `const` no `allOf` do schema.
+
+3. **Review por QA independente é o padrão** — `RUNTIME_POLICY.yaml#review_authorization=qa_role`. `complete` continua exigindo owner; `review` exige role `qa`/`orchestrator`. Owner sem role QA → `REVIEW_ROLE_VIOLATION`. Service injeta `_reviewer_role` no payload após resolver via `agents_swarm.yaml` ou prefixo `agent-qa*`.
+
+4. **`orchestrator.file.write` carrega metadata forense** — payload contém `effects[]` com `before_sha256`, `after_sha256`, `bytes`, `encoding`, `artifact_sha256`, `artifact_path`. Artifacts em `.roadmap/artifacts/file-effects/<sha>.json` permitem replay/audit determinístico.
+
+5. **Append serializável** — `service.submit/run` usam `append_transactional` (parse + revalidate + decide-seq + append + project sob mesmo lock). Códigos: `STALE_STATE_SEQ`, `STALE_STATE_HASH`, `STORE_LOCK_TIMEOUT`. Sem duplicate `event_seq` em concorrência multi-processo.
+
+6. **Atomic file effects** — `file_updates` passam por staging (`.roadmap/staging/`) → append → commit. Append failure → discard staging sem deixar arquivo final. Recover crash via `service.recover_file_effects()`.
+
+7. **Hotfix validado por `build_hotfix_event`** — validação interna emite códigos estruturados: `HOTFIX_ISSUE_NOT_FOUND`, `HOTFIX_ISSUE_NOT_OPEN`, `HOTFIX_TARGET_NOT_FOUND`, `HOTFIX_TARGET_NOT_DONE`, `HOTFIX_SCOPE_INVALID`, `HOTFIX_ALREADY_EXISTS`.
+
+8. **Baseline lessons reseed por evento** — `esaa init` emite `orchestrator.view.mutate(target=lessons, change=baseline_reseed)` que reconstrói LES-0001/2/3 por replay. Sem edição manual de `lessons.json`.
+
+9. **Plugin dispatch parity** — `service.run` e `service.eligible` usam mesmo universo via `tasks_with_planned_plugins`. Plugin task não admitida → `task.create` determinístico antes do claim.
+
+10. **Vocabulário canônico de reject codes** — `src/esaa/reject_codes.py` é fonte única. Inventory test (`tests/test_reject_codes_inventory.py`) detecta códigos órfãos.

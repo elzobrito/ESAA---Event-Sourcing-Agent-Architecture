@@ -28,6 +28,7 @@ roles:
       - verify.start
       - verify.ok
       - verify.fail
+      - runner.metrics  # FIX-1812 — external runner telemetry
 
 event_store:
   path: ".roadmap/activity.jsonl"

@@ -116,7 +116,8 @@ def test_submit_dry_run_no_persist(contract_bundle: Path) -> None:
         actor="agent-spec",
         dry_run=True,
     )
-    assert result["status"] == "accepted"
+    assert result["status"] == "dry_run"
+    assert result["would_append_events"] >= 1
     events_after = parse_event_store(contract_bundle)
     assert len(events_after) == len(events_before)
 

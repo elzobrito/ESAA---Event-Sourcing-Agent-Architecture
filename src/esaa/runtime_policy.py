@@ -95,6 +95,37 @@ def is_blocked_by_max_attempts(events: list[dict[str, Any]], task_id: str, max_a
     return count_penalizing_rejections(events, task_id) >= max_attempts
 
 
+def resolve_role(actor: str, root: Path | None = None) -> str:
+    """FIX-1807 — Resolve role de um actor.
+
+    Consulta .roadmap/agents_swarm.yaml se existir: agents[<actor>].role.
+    Fallback heuristico: prefixo 'agent-qa*' -> 'qa'; 'agent-orchestrator*' -> 'orchestrator';
+    outros -> 'agent'.
+    """
+    if root is not None:
+        swarm_path = root / ".roadmap" / "agents_swarm.yaml"
+        if swarm_path.exists():
+            try:
+                data = yaml.safe_load(swarm_path.read_text(encoding="utf-8")) or {}
+                role = (data.get("agents", {}).get(actor, {}) or {}).get("role")
+                if role:
+                    role_value = str(role)
+                    return "qa" if role_value == "quality" else role_value
+            except Exception:
+                pass
+    if actor.startswith("agent-qa"):
+        return "qa"
+    if actor.startswith("agent-orchestrator") or actor == "orchestrator":
+        return "orchestrator"
+    return "agent"
+
+
+def review_authorization_mode(policy: dict[str, Any]) -> str:
+    """FIX-1807 — modo de autorizacao para review: 'owner' (legado) ou 'qa_role'."""
+    val = policy.get("review_authorization", "owner")
+    return val if val in {"owner", "qa_role"} else "owner"
+
+
 def attempt_expired(events: list[dict[str, Any]], task_id: str, now: datetime, ttl: timedelta) -> bool:
     """Tarefa em in_progress sem complete ha mais que ttl?"""
     last_claim = None
