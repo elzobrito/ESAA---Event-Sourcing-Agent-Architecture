@@ -24,11 +24,12 @@ class InvalidPathAdapter(AgentAdapter):
         task = dispatch_context["task"]
         self._calls += 1
         if self._calls == 1:
-            return {"activity_event": {"action": "claim", "task_id": task["task_id"], "notes": "claim"}}
+            return {"activity_event": {"action": "claim", "task_id": task["task_id"], "prior_status": "todo", "notes": "claim"}}
         return {
             "activity_event": {
                 "action": "complete",
                 "task_id": task["task_id"],
+                "prior_status": "in_progress",
                 "verification": {"checks": ["ok"]},
             },
             "file_updates": [{"path": "src/evil.txt", "content": "invalid for spec"}],
@@ -48,6 +49,7 @@ def test_boundaries_reject_spec_write_into_src(contract_bundle: Path) -> None:
         "activity_event": {
             "action": "complete",
             "task_id": "T-SPEC",
+            "prior_status": "in_progress",
             "verification": {"checks": ["ok"]},
         },
         "file_updates": [{"path": "src/not-allowed.txt", "content": "x"}],
@@ -55,6 +57,31 @@ def test_boundaries_reject_spec_write_into_src(contract_bundle: Path) -> None:
     with pytest.raises(ESAAError) as exc:
         validate_agent_output(output, schema, contract, task)
     assert exc.value.code == "BOUNDARY_VIOLATION"
+
+
+def test_boundaries_allow_spec_to_update_root_readme(contract_bundle: Path) -> None:
+    contract = load_agent_contract(contract_bundle)
+    schema = load_agent_result_schema(contract_bundle)
+    task = {
+        "task_id": "README-1803",
+        "task_kind": "spec",
+        "status": "in_progress",
+        "outputs": {"files": ["readme.md"]},
+    }
+    output = {
+        "activity_event": {
+            "action": "complete",
+            "task_id": "README-1803",
+            "prior_status": "in_progress",
+            "verification": {"checks": ["README content reflects current ESAA state"]},
+        },
+        "file_updates": [{"path": "readme.md", "content": "# ESAA\n"}],
+    }
+
+    event, files = validate_agent_output(output, schema, contract, task)
+
+    assert event["action"] == "complete"
+    assert files[0]["path"] == "readme.md"
 
 
 def test_output_rejected_has_no_side_effect_files(contract_bundle: Path) -> None:

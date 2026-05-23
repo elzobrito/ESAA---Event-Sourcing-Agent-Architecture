@@ -4,15 +4,26 @@
   "title": "ESAA Issues Projection",
   "type": "object",
   "additionalProperties": false,
-  "required": ["meta", "issues", "indexes"],
+  "required": [
+    "meta",
+    "issues",
+    "indexes"
+  ],
   "properties": {
     "meta": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version", "esaa_version", "generated_by", "source_event_store", "last_event_seq", "updated_at"],
+      "required": [
+        "schema_version",
+        "esaa_version",
+        "generated_by",
+        "source_event_store",
+        "last_event_seq",
+        "updated_at"
+      ],
       "properties": {
         "schema_version": {
-          "const": "0.4.0"
+          "const": "0.4.1"
         },
         "esaa_version": {
           "type": "string"
@@ -38,7 +49,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["issue_id", "status", "severity", "title", "evidence", "links", "timeline"],
+        "required": [
+          "issue_id",
+          "status",
+          "severity",
+          "title",
+          "evidence",
+          "links",
+          "timeline"
+        ],
         "properties": {
           "issue_id": {
             "type": "string",
@@ -46,25 +65,40 @@
           },
           "status": {
             "type": "string",
-            "enum": ["open", "resolved", "closed"]
+            "enum": [
+              "open",
+              "resolved",
+              "closed"
+            ]
           },
           "severity": {
             "type": "string",
-            "enum": ["low", "medium", "high", "critical"]
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
           },
           "title": {
             "type": "string",
             "minLength": 1
           },
           "baseline_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "affected": {
             "type": "object"
           },
           "evidence": {
             "type": "object",
-            "required": ["symptom", "repro_steps"],
+            "required": [
+              "symptom",
+              "repro_steps"
+            ],
             "properties": {
               "symptom": {
                 "type": "string"
@@ -78,35 +112,57 @@
             }
           },
           "resolution": {
-            "type": ["object", "null"]
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "links": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["reported_by_task_id", "fixes_task_id", "hotfix_task_id"],
+            "required": [
+              "reported_by_task_id",
+              "fixes_task_id",
+              "hotfix_task_id"
+            ],
             "properties": {
               "reported_by_task_id": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "fixes_task_id": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "hotfix_task_id": {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           },
           "timeline": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["created_event_seq", "resolved_event_seq"],
+            "required": [
+              "created_event_seq",
+              "resolved_event_seq"
+            ],
             "properties": {
               "created_event_seq": {
                 "type": "integer",
                 "minimum": 1
               },
               "resolved_event_seq": {
-                "type": ["integer", "null"]
+                "type": [
+                  "integer",
+                  "null"
+                ]
               }
             }
           }
@@ -116,7 +172,9 @@
     "indexes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["open_by_baseline"],
+      "required": [
+        "open_by_baseline"
+      ],
       "properties": {
         "open_by_baseline": {
           "type": "object",
@@ -132,4 +190,3 @@
     }
   }
 }
-

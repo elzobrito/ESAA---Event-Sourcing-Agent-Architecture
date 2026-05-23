@@ -152,6 +152,7 @@ boundaries:
         - "docs/**"
       write:
         - "docs/**"
+        - "readme.md"
       forbidden_write:
         - "src/**"
         - "tests/**"

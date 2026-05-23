@@ -1,93 +1,25 @@
 {
   "meta": {
-    "schema_version": "0.4.0",
+    "schema_version": "0.4.1",
     "esaa_version": "0.4.x",
     "immutable_done": true,
-    "master_correlation_id": "CID-ESAA-INIT",
+    "master_correlation_id": null,
     "run": {
-      "run_id": "RUN-0001",
+      "run_id": null,
       "status": "initialized",
-      "last_event_seq": 6,
-      "projection_hash_sha256": "7f32d838c797f55429b11483f163a1cdcf12cb75e335ebb96f0202b07dc26014",
-      "verify_status": "ok"
+      "last_event_seq": 0,
+      "projection_hash_sha256": "411885afdc5e0e74e1eac70f8cef0094ef6842c1b5c11b34654bb1e3b0664d50",
+      "verify_status": "unknown"
     },
-    "updated_at": "2026-02-27T01:25:22Z"
+    "updated_at": "2026-05-23T14:08:09Z"
   },
   "project": {
     "name": "esaa-core",
     "audit_scope": ".roadmap/"
   },
-  "tasks": [
-    {
-      "task_id": "T-1000",
-      "task_kind": "spec",
-      "title": "Create initial ESAA spec document",
-      "description": "Produce the initial specification artifact for the ESAA core baseline.",
-      "status": "todo",
-      "depends_on": [],
-      "targets": [
-        "spec-core"
-      ],
-      "outputs": {
-        "files": [
-          "docs/spec/T-1000.md"
-        ]
-      },
-      "immutability": {
-        "done_is_immutable": true
-      }
-    },
-    {
-      "task_id": "T-1010",
-      "task_kind": "impl",
-      "title": "Create initial implementation artifact",
-      "description": "Produce the initial implementation artifact that follows the approved specification.",
-      "status": "todo",
-      "depends_on": [
-        "T-1000"
-      ],
-      "targets": [
-        "impl-core"
-      ],
-      "outputs": {
-        "files": [
-          "src/T-1010.txt"
-        ]
-      },
-      "immutability": {
-        "done_is_immutable": true
-      }
-    },
-    {
-      "task_id": "T-1020",
-      "task_kind": "qa",
-      "title": "Create initial QA report",
-      "description": "Produce the initial QA evidence artifact validating the implementation baseline.",
-      "status": "todo",
-      "depends_on": [
-        "T-1010"
-      ],
-      "targets": [
-        "qa-core"
-      ],
-      "outputs": {
-        "files": [
-          "docs/qa/T-1020.md"
-        ]
-      },
-      "immutability": {
-        "done_is_immutable": true
-      }
-    }
-  ],
+  "tasks": [],
   "indexes": {
-    "by_status": {
-      "todo": 3
-    },
-    "by_kind": {
-      "impl": 1,
-      "qa": 1,
-      "spec": 1
-    }
+    "by_status": {},
+    "by_kind": {}
   }
 }

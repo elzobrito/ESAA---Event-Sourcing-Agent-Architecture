@@ -4,15 +4,27 @@
   "title": "ESAA Roadmap Projection",
   "type": "object",
   "additionalProperties": false,
-  "required": ["meta", "project", "tasks", "indexes"],
+  "required": [
+    "meta",
+    "project",
+    "tasks",
+    "indexes"
+  ],
   "properties": {
     "meta": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version", "esaa_version", "immutable_done", "master_correlation_id", "run", "updated_at"],
+      "required": [
+        "schema_version",
+        "esaa_version",
+        "immutable_done",
+        "master_correlation_id",
+        "run",
+        "updated_at"
+      ],
       "properties": {
         "schema_version": {
-          "const": "0.4.0"
+          "const": "0.4.1"
         },
         "esaa_version": {
           "type": "string"
@@ -21,19 +33,37 @@
           "const": true
         },
         "master_correlation_id": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "run": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["run_id", "status", "last_event_seq", "projection_hash_sha256", "verify_status"],
+          "required": [
+            "run_id",
+            "status",
+            "last_event_seq",
+            "projection_hash_sha256",
+            "verify_status"
+          ],
           "properties": {
             "run_id": {
-              "type": ["string", "null"]
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "status": {
               "type": "string",
-              "enum": ["initialized", "running", "success", "failed", "halted"]
+              "enum": [
+                "initialized",
+                "running",
+                "success",
+                "failed",
+                "halted"
+              ]
             },
             "last_event_seq": {
               "type": "integer",
@@ -45,7 +75,12 @@
             },
             "verify_status": {
               "type": "string",
-              "enum": ["unknown", "ok", "mismatch", "corrupted"]
+              "enum": [
+                "unknown",
+                "ok",
+                "mismatch",
+                "corrupted"
+              ]
             }
           }
         },
@@ -58,7 +93,10 @@
     "project": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "audit_scope"],
+      "required": [
+        "name",
+        "audit_scope"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -79,7 +117,10 @@
     "indexes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["by_status", "by_kind"],
+      "required": [
+        "by_status",
+        "by_kind"
+      ],
       "properties": {
         "by_status": {
           "type": "object",
@@ -102,7 +143,17 @@
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["task_id", "task_kind", "title", "description", "status", "depends_on", "targets", "outputs", "immutability"],
+      "required": [
+        "task_id",
+        "task_kind",
+        "title",
+        "description",
+        "status",
+        "depends_on",
+        "targets",
+        "outputs",
+        "immutability"
+      ],
       "properties": {
         "task_id": {
           "type": "string",
@@ -110,7 +161,11 @@
         },
         "task_kind": {
           "type": "string",
-          "enum": ["spec", "impl", "qa"]
+          "enum": [
+            "spec",
+            "impl",
+            "qa"
+          ]
         },
         "title": {
           "type": "string",
@@ -122,7 +177,12 @@
         },
         "status": {
           "type": "string",
-          "enum": ["todo", "in_progress", "review", "done"]
+          "enum": [
+            "todo",
+            "in_progress",
+            "review",
+            "done"
+          ]
         },
         "depends_on": {
           "type": "array",
@@ -141,7 +201,9 @@
         "outputs": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["files"],
+          "required": [
+            "files"
+          ],
           "properties": {
             "files": {
               "type": "array",
@@ -155,7 +217,9 @@
         "immutability": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["done_is_immutable"],
+          "required": [
+            "done_is_immutable"
+          ],
           "properties": {
             "done_is_immutable": {
               "const": true
@@ -214,13 +278,22 @@
           "if": {
             "properties": {
               "status": {
-                "enum": ["in_progress", "review", "done"]
+                "enum": [
+                  "in_progress",
+                  "review",
+                  "done"
+                ]
               }
             },
-            "required": ["status"]
+            "required": [
+              "status"
+            ]
           },
           "then": {
-            "required": ["assigned_to", "started_at"]
+            "required": [
+              "assigned_to",
+              "started_at"
+            ]
           }
         },
         {
@@ -230,10 +303,14 @@
                 "const": "done"
               }
             },
-            "required": ["status"]
+            "required": [
+              "status"
+            ]
           },
           "then": {
-            "required": ["completed_at"]
+            "required": [
+              "completed_at"
+            ]
           }
         },
         {
@@ -243,14 +320,21 @@
                 "const": true
               }
             },
-            "required": ["is_hotfix"]
+            "required": [
+              "is_hotfix"
+            ]
           },
           "then": {
-            "required": ["issue_id", "fixes", "scope_patch", "required_verification", "baseline_id"]
+            "required": [
+              "issue_id",
+              "fixes",
+              "scope_patch",
+              "required_verification",
+              "baseline_id"
+            ]
           }
         }
       ]
     }
   }
 }
-

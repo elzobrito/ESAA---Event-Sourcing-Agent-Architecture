@@ -4,15 +4,25 @@
   "title": "ESAA Lessons Projection",
   "type": "object",
   "additionalProperties": false,
-  "required": ["meta", "lessons", "indexes"],
+  "required": [
+    "meta",
+    "lessons",
+    "indexes"
+  ],
   "properties": {
     "meta": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version", "esaa_version", "generated_by", "source_event_store", "updated_at"],
+      "required": [
+        "schema_version",
+        "esaa_version",
+        "generated_by",
+        "source_event_store",
+        "updated_at"
+      ],
       "properties": {
         "schema_version": {
-          "const": "0.4.0"
+          "const": "0.4.1"
         },
         "esaa_version": {
           "type": "string"
@@ -34,7 +44,16 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["lesson_id", "status", "created_at", "title", "mistake", "rule", "scope", "enforcement"],
+        "required": [
+          "lesson_id",
+          "status",
+          "created_at",
+          "title",
+          "mistake",
+          "rule",
+          "scope",
+          "enforcement"
+        ],
         "properties": {
           "lesson_id": {
             "type": "string",
@@ -42,7 +61,10 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "archived"]
+            "enum": [
+              "active",
+              "archived"
+            ]
           },
           "created_at": {
             "type": "string",
@@ -63,13 +85,19 @@
           "scope": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["task_kinds"],
+            "required": [
+              "task_kinds"
+            ],
             "properties": {
               "task_kinds": {
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "enum": ["spec", "impl", "qa"]
+                  "enum": [
+                    "spec",
+                    "impl",
+                    "qa"
+                  ]
                 }
               }
             }
@@ -77,15 +105,29 @@
           "enforcement": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["mode", "applies_to"],
+            "required": [
+              "mode",
+              "applies_to"
+            ],
             "properties": {
               "mode": {
                 "type": "string",
-                "enum": ["reject", "warn", "require_field", "require_step"]
+                "enum": [
+                  "reject",
+                  "warn",
+                  "require_field",
+                  "require_step"
+                ]
               },
               "applies_to": {
                 "type": "string",
-                "enum": ["output_contract", "boundaries", "template", "workflow_gate", "verification_gate"]
+                "enum": [
+                  "output_contract",
+                  "boundaries",
+                  "template",
+                  "workflow_gate",
+                  "verification_gate"
+                ]
               }
             }
           },
@@ -101,7 +143,10 @@
     "indexes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["by_task_kind", "by_enforcement_applies_to"],
+      "required": [
+        "by_task_kind",
+        "by_enforcement_applies_to"
+      ],
       "properties": {
         "by_task_kind": {
           "type": "object",
@@ -127,4 +172,3 @@
     }
   }
 }
-

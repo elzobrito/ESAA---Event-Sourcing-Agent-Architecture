@@ -16,7 +16,6 @@ def contract_bundle(tmp_path: Path, repo_root: Path) -> Path:
     source = repo_root / ".roadmap"
     target = tmp_path / ".roadmap"
     target.mkdir(parents=True, exist_ok=True)
-    for name in ("AGENT_CONTRACT.yaml", "agent_result.schema.json"):
+    for name in ("AGENT_CONTRACT.yaml", "agent_result.schema.json", "roadmap.schema.json"):
         shutil.copy2(source / name, target / name)
     return tmp_path
-

@@ -18,7 +18,14 @@ class MockAgentAdapter(AgentAdapter):
         status = task["status"]
 
         if status == "todo":
-            return {"activity_event": {"action": "claim", "task_id": task_id, "notes": "mock claim"}}
+            return {
+                "activity_event": {
+                    "action": "claim",
+                    "task_id": task_id,
+                    "prior_status": "todo",
+                    "notes": "mock claim",
+                }
+            }
 
         if status == "in_progress":
             checks = [f"mock-check:{task_id}"]
@@ -38,6 +45,7 @@ class MockAgentAdapter(AgentAdapter):
             event = {
                 "action": "complete",
                 "task_id": task_id,
+                "prior_status": "in_progress",
                 "notes": "mock complete",
                 "verification": {"checks": checks},
             }
@@ -51,6 +59,7 @@ class MockAgentAdapter(AgentAdapter):
                 "activity_event": {
                     "action": "review",
                     "task_id": task_id,
+                    "prior_status": "review",
                     "decision": "approve",
                     "tasks": [task_id],
                     "notes": "mock review approve",
@@ -61,6 +70,7 @@ class MockAgentAdapter(AgentAdapter):
             "activity_event": {
                 "action": "issue.report",
                 "task_id": task_id,
+                "prior_status": status if status in {"todo", "in_progress", "review"} else "in_progress",
                 "issue_id": f"ISS-MOCK-{task_id}",
                 "severity": "low",
                 "title": "Task not actionable",

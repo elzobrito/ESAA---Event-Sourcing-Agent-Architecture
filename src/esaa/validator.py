@@ -7,7 +7,19 @@ from typing import Any
 from jsonschema import ValidationError, validate
 
 from .errors import ESAAError
+from .state_machine import REJECT_PRIOR_MISMATCH, allowed_actions_for
 from .utils import normalize_rel_path
+
+
+# RF08: mensagem curta — caminho + razao, sem stack/instance dump.
+def _short_validation_error(exc: ValidationError) -> str:
+    path = "/".join(str(p) for p in exc.absolute_path) or "<root>"
+    msg = exc.message.splitlines()[0]
+    return f"{path}: {msg[:140]}"
+
+
+# R8: minimo de verification.checks por task_kind (alinhado a AGENT_CONTRACT.verification_gate).
+MIN_CHECKS_BY_KIND = {"spec": 1, "impl": 1, "qa": 1, "hotfix": 2}
 
 
 def _matches_any(path: str, patterns: list[str]) -> bool:
@@ -33,7 +45,7 @@ def validate_agent_output(
     try:
         validate(output, schema)
     except ValidationError as exc:
-        raise ESAAError("SCHEMA_INVALID", str(exc)) from exc
+        raise ESAAError("SCHEMA_INVALID", _short_validation_error(exc)) from exc
 
     allowed_root = {"activity_event", "file_updates"}
     unknown_root = set(output.keys()) - allowed_root
@@ -45,27 +57,38 @@ def validate_agent_output(
     if action not in contract["vocabulary"]["allowed_agent_actions"]:
         raise ESAAError("UNKNOWN_ACTION", f"unknown action: {action}")
 
+    # RF07: prior_status declarado deve bater com o status real do roadmap.
+    if action != "issue.report":
+        declared = event.get("prior_status")
+        real = task["status"]
+        if declared != real:
+            raise ESAAError(REJECT_PRIOR_MISMATCH, f"declared={declared} real={real}")
+
+    if action not in allowed_actions_for(task["status"]):
+        raise ESAAError("WORKFLOW_GATE_VIOLATION", f"{action} not allowed in status={task['status']}")
+
     if event["task_id"] != task["task_id"]:
-        raise ESAAError("SCHEMA_INVALID", "activity_event.task_id does not match dispatched task")
+        raise ESAAError("SCHEMA_INVALID", "task_id mismatch")
 
     forbidden = set(contract["output_contract"]["activity_event"]["forbidden_fields"])
     found_forbidden = sorted([field for field in event.keys() if field in forbidden])
     if found_forbidden:
-        raise ESAAError("SCHEMA_INVALID", f"forbidden activity_event fields: {found_forbidden}")
+        raise ESAAError("SCHEMA_INVALID", f"forbidden fields: {found_forbidden}")
 
     if action == "complete":
-        if task["task_kind"] == "impl":
-            verification = event.get("verification", {})
-            checks = verification.get("checks", [])
-            min_checks = 2 if task.get("is_hotfix") else 1
-            if len(checks) < min_checks:
-                raise ESAAError(
-                    "WORKFLOW_GATE",
-                    f"complete requires at least {min_checks} verification checks",
-                )
+        # R8: min de verification.checks por task_kind (hotfix=2).
+        kind_key = "hotfix" if task.get("is_hotfix") else task["task_kind"]
+        min_checks = MIN_CHECKS_BY_KIND.get(kind_key, 1)
+        verification = event.get("verification", {})
+        checks = verification.get("checks", [])
+        if len(checks) < min_checks:
+            raise ESAAError(
+                "MISSING_VERIFICATION",
+                f"complete requires >= {min_checks} verification checks for kind={kind_key}",
+            )
         if task.get("is_hotfix"):
             if not event.get("issue_id") or not event.get("fixes"):
-                raise ESAAError("WORKFLOW_GATE", "hotfix complete requires issue_id and fixes")
+                raise ESAAError("MISSING_VERIFICATION", "hotfix complete requires issue_id and fixes")
 
     if action == "review":
         decision = event.get("decision")
@@ -97,4 +120,3 @@ def _validate_boundaries(updates: list[dict[str, str]], contract: dict[str, Any]
                 raise ESAAError("BOUNDARY_VIOLATION", "hotfix task missing scope_patch")
             if not any(path.startswith(normalize_rel_path(prefix)) for prefix in scope_patch):
                 raise ESAAError("BOUNDARY_VIOLATION", f"path outside scope_patch: {path}")
-

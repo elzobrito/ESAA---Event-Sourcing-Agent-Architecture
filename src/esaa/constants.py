@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = "0.4.0"
+SCHEMA_VERSION = "0.4.1"
 ESAA_VERSION = "0.4.x"
 
 ROADMAP_DIR = ".roadmap"
@@ -23,6 +23,7 @@ CANONICAL_ACTIONS = {
     "issue.report",
     "hotfix.create",
     "issue.resolve",
+    "runner.metrics",
     "output.rejected",
     "orchestrator.file.write",
     "orchestrator.view.mutate",
@@ -35,4 +36,3 @@ RUN_STATUS = {"initialized", "running", "success", "failed", "halted"}
 VERIFY_STATUS = {"unknown", "ok", "mismatch", "corrupted"}
 TASK_STATUS = {"todo", "in_progress", "review", "done"}
 TASK_KINDS = {"spec", "impl", "qa"}
-

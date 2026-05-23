@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -98,13 +100,55 @@ def parse_event_store(root: Path) -> list[dict[str, Any]]:
     return events
 
 
-def append_events(root: Path, events: list[dict[str, Any]]) -> None:
+def _lock_path(path: Path) -> Path:
+    return path.with_name(path.name + ".lock")
+
+
+def _acquire_store_lock(path: Path, timeout: float = 10.0, retry_interval: float = 0.05) -> Path:
+    lock_path = _lock_path(path)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(f"pid={os.getpid()}\n")
+            return lock_path
+        except FileExistsError as exc:
+            if time.monotonic() >= deadline:
+                raise ESAAError("STORE_LOCK_TIMEOUT", f"timed out waiting for {lock_path}") from exc
+            time.sleep(retry_interval)
+
+
+def _release_store_lock(lock_path: Path) -> None:
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def append_events(
+    root: Path,
+    events: list[dict[str, Any]],
+    lock_timeout: float = 10.0,
+    retry_interval: float = 0.05,
+) -> None:
     if not events:
         return
     path = ensure_event_store(root)
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        for event in events:
-            handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+    lock_path = _acquire_store_lock(path, timeout=lock_timeout, retry_interval=retry_interval)
+    try:
+        # Garante separacao append-only: se o arquivo existente nao termina em
+        # newline (ex.: linhas adicionadas manualmente), prepende uma quebra para
+        # nao concatenar o novo evento na ultima linha (evita JSONL corrompido).
+        existing = path.read_bytes()
+        needs_sep = bool(existing) and not existing.endswith(b"\n")
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            if needs_sep:
+                handle.write("\n")
+            for event in events:
+                handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+    finally:
+        _release_store_lock(lock_path)
 
 
 def next_event_seq(events: list[dict[str, Any]]) -> int:
@@ -130,4 +174,3 @@ def require_task(roadmap: dict[str, Any], task_id: str) -> dict[str, Any]:
         if task.get("task_id") == task_id:
             return task
     raise ESAAError("TASK_NOT_FOUND", f"task_id not found: {task_id}")
-

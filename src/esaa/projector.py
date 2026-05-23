@@ -6,6 +6,13 @@ from typing import Any
 from .compat import normalize_legacy_verify_status
 from .constants import ESAA_VERSION, SCHEMA_VERSION
 from .errors import ESAAError
+from .state_machine import (
+    REJECT_IMMUTABLE_DONE,
+    REJECT_LOCK,
+    REJECT_MISSING_CLAIM,
+    REJECT_WORKFLOW_GATE,
+    classify_transition,
+)
 from .utils import sha256_hex, utc_now_iso
 
 
@@ -85,15 +92,21 @@ def _task_by_id(state: dict[str, Any], task_id: str) -> dict[str, Any]:
 def _ensure_owner(task: dict[str, Any], actor: str) -> None:
     owner = task.get("assigned_to")
     if owner != actor:
-        raise ESAAError("NOT_LOCK_OWNER", f"actor {actor} is not lock owner ({owner})")
+        raise ESAAError(REJECT_LOCK, f"actor {actor} != lock owner {owner}")
+
+
+def _check_transition(task: dict[str, Any], action: str) -> None:
+    """Aplica a maquina de estado canonica (RF01) com reject_codes do contrato."""
+    ok, code = classify_transition(task["status"], action)
+    if not ok:
+        raise ESAAError(code, f"{action} invalid for status={task['status']}")
 
 
 def _apply_claim(state: dict[str, Any], event: dict[str, Any]) -> None:
     task = _task_by_id(state, event["payload"]["task_id"])
-    if task["status"] == "done":
-        raise ESAAError("IMMUTABLE_DONE", "cannot claim a done task")
-    if task["status"] in {"in_progress", "review"} or task.get("assigned_to"):
-        raise ESAAError("LOCKED_TASK", "task is already locked")
+    _check_transition(task, "claim")
+    if task.get("assigned_to"):
+        raise ESAAError(REJECT_LOCK, "task already locked")
     task["status"] = "in_progress"
     task["assigned_to"] = event["actor"]
     task["started_at"] = event["ts"]
@@ -101,10 +114,7 @@ def _apply_claim(state: dict[str, Any], event: dict[str, Any]) -> None:
 
 def _apply_complete(state: dict[str, Any], event: dict[str, Any]) -> None:
     task = _task_by_id(state, event["payload"]["task_id"])
-    if task["status"] == "done":
-        raise ESAAError("IMMUTABLE_DONE", "cannot complete a done task")
-    if task["status"] != "in_progress":
-        raise ESAAError("INVALID_TRANSITION", f"complete invalid for status={task['status']}")
+    _check_transition(task, "complete")
     _ensure_owner(task, event["actor"])
     task["status"] = "review"
     verification = event["payload"].get("verification")
@@ -119,10 +129,7 @@ def _apply_complete(state: dict[str, Any], event: dict[str, Any]) -> None:
 def _apply_review(state: dict[str, Any], event: dict[str, Any]) -> None:
     task = _task_by_id(state, event["payload"]["task_id"])
     decision = event["payload"].get("decision")
-    if task["status"] == "done":
-        raise ESAAError("IMMUTABLE_DONE", "cannot review a done task")
-    if task["status"] != "review":
-        raise ESAAError("INVALID_TRANSITION", f"review invalid for status={task['status']}")
+    _check_transition(task, "review")
     _ensure_owner(task, event["actor"])
     if decision == "approve":
         task["status"] = "done"
@@ -130,7 +137,7 @@ def _apply_review(state: dict[str, Any], event: dict[str, Any]) -> None:
     elif decision == "request_changes":
         task["status"] = "in_progress"
     else:
-        raise ESAAError("INVALID_TRANSITION", f"review decision invalid: {decision}")
+        raise ESAAError(REJECT_WORKFLOW_GATE, f"review decision invalid: {decision}")
 
 
 def _apply_issue_report(state: dict[str, Any], event: dict[str, Any]) -> None:
@@ -212,6 +219,10 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         state["meta"]["master_correlation_id"] = payload.get("master_correlation_id")
         state["meta"]["run"]["run_id"] = payload.get("run_id", state["meta"]["run"]["run_id"])
         state["meta"]["run"]["status"] = payload.get("status", "initialized")
+        if payload.get("project_name"):
+            state["project"]["name"] = payload["project_name"]
+        if payload.get("audit_scope"):
+            state["project"]["audit_scope"] = payload["audit_scope"]
     elif action == "run.end":
         state["meta"]["run"]["status"] = payload.get("status", "success")
     elif action == "task.create":
@@ -232,7 +243,13 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         state["meta"]["run"]["verify_status"] = "ok"
     elif action == "verify.fail":
         state["meta"]["run"]["verify_status"] = payload.get("verify_status", "mismatch")
-    elif action in {"output.rejected", "orchestrator.file.write", "orchestrator.view.mutate", "verify.start"}:
+    elif action == "orchestrator.view.mutate":
+        # R1-fix: um view.mutate pode registrar lessons de forma reconstruível
+        # por replay. Quando o payload carrega 'lessons', a projeção passa a
+        # derivá-las do event store (e não de edição manual do read model).
+        if isinstance(payload.get("lessons"), list):
+            state["_lessons"] = deepcopy(payload["lessons"])
+    elif action in {"output.rejected", "orchestrator.file.write", "runner.metrics", "verify.start"}:
         pass
     else:
         raise ESAAError("UNKNOWN_ACTION", f"unknown action: {action}")

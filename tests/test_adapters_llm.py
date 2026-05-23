@@ -26,6 +26,7 @@ def test_submit_claim_accepted(contract_bundle: Path) -> None:
         "activity_event": {
             "action": "claim",
             "task_id": "T-1000",
+            "prior_status": "todo",
             "notes": "claiming spec task",
         }
     }
@@ -41,18 +42,17 @@ def test_submit_complete_with_files(contract_bundle: Path) -> None:
     service = ESAAService(contract_bundle)
     service.init(force=True)
 
-    # First claim
     service.submit(
-        {"activity_event": {"action": "claim", "task_id": "T-1000"}},
+        {"activity_event": {"action": "claim", "task_id": "T-1000", "prior_status": "todo"}},
         actor="agent-spec",
     )
 
-    # Then complete with file
     result = service.submit(
         {
             "activity_event": {
                 "action": "complete",
                 "task_id": "T-1000",
+                "prior_status": "in_progress",
                 "verification": {"checks": ["manual-review"]},
             },
             "file_updates": [
@@ -72,7 +72,7 @@ def test_submit_boundary_violation_rejected(contract_bundle: Path) -> None:
     service.init(force=True)
 
     service.submit(
-        {"activity_event": {"action": "claim", "task_id": "T-1000"}},
+        {"activity_event": {"action": "claim", "task_id": "T-1000", "prior_status": "todo"}},
         actor="agent-spec",
     )
 
@@ -82,6 +82,7 @@ def test_submit_boundary_violation_rejected(contract_bundle: Path) -> None:
                 "activity_event": {
                     "action": "complete",
                     "task_id": "T-1000",
+                    "prior_status": "in_progress",
                     "verification": {"checks": ["ok"]},
                 },
                 "file_updates": [{"path": "src/evil.py", "content": "hack"}],
@@ -98,7 +99,7 @@ def test_submit_invalid_task_rejected(contract_bundle: Path) -> None:
 
     with pytest.raises(ESAAError) as exc:
         service.submit(
-            {"activity_event": {"action": "claim", "task_id": "T-9999"}},
+            {"activity_event": {"action": "claim", "task_id": "T-9999", "prior_status": "todo"}},
             actor="agent-spec",
         )
     assert exc.value.code == "TASK_NOT_FOUND"
@@ -111,7 +112,7 @@ def test_submit_dry_run_no_persist(contract_bundle: Path) -> None:
 
     events_before = parse_event_store(contract_bundle)
     result = service.submit(
-        {"activity_event": {"action": "claim", "task_id": "T-1000"}},
+        {"activity_event": {"action": "claim", "task_id": "T-1000", "prior_status": "todo"}},
         actor="agent-spec",
         dry_run=True,
     )
@@ -125,17 +126,16 @@ def test_submit_full_lifecycle(contract_bundle: Path) -> None:
     service = ESAAService(contract_bundle)
     service.init(force=True)
 
-    # Claim
     service.submit(
-        {"activity_event": {"action": "claim", "task_id": "T-1000"}},
+        {"activity_event": {"action": "claim", "task_id": "T-1000", "prior_status": "todo"}},
         actor="agent-spec",
     )
-    # Complete
     service.submit(
         {
             "activity_event": {
                 "action": "complete",
                 "task_id": "T-1000",
+                "prior_status": "in_progress",
                 "verification": {"checks": ["reviewed"]},
             },
             "file_updates": [
@@ -144,12 +144,12 @@ def test_submit_full_lifecycle(contract_bundle: Path) -> None:
         },
         actor="agent-spec",
     )
-    # Review approve
     result = service.submit(
         {
             "activity_event": {
                 "action": "review",
                 "task_id": "T-1000",
+                "prior_status": "review",
                 "decision": "approve",
                 "tasks": ["T-1000"],
             }
@@ -158,7 +158,6 @@ def test_submit_full_lifecycle(contract_bundle: Path) -> None:
     )
     assert result["status"] == "accepted"
 
-    # Verify task is done
     verify = service.verify()
     assert verify["verify_status"] == "ok"
 
@@ -176,8 +175,7 @@ def test_process_inbox_accepted(contract_bundle: Path) -> None:
     inbox = contract_bundle / ".roadmap" / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
 
-    # Write a claim to inbox with actor__task_id naming
-    payload = {"activity_event": {"action": "claim", "task_id": "T-1000"}}
+    payload = {"activity_event": {"action": "claim", "task_id": "T-1000", "prior_status": "todo"}}
     (inbox / "agent-spec__T-1000.json").write_text(
         json.dumps(payload), encoding="utf-8"
     )
@@ -187,7 +185,6 @@ def test_process_inbox_accepted(contract_bundle: Path) -> None:
     assert result["accepted"] == 1
     assert result["rejected"] == 0
 
-    # File moved to done/
     assert not (inbox / "agent-spec__T-1000.json").exists()
     assert (inbox / "done" / "agent-spec__T-1000.json").exists()
 
@@ -200,8 +197,7 @@ def test_process_inbox_rejected_moved(contract_bundle: Path) -> None:
     inbox = contract_bundle / ".roadmap" / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
 
-    # Invalid: unknown task
-    payload = {"activity_event": {"action": "claim", "task_id": "T-9999"}}
+    payload = {"activity_event": {"action": "claim", "task_id": "T-9999", "prior_status": "todo"}}
     (inbox / "agent-spec__T-9999.json").write_text(
         json.dumps(payload), encoding="utf-8"
     )
@@ -221,7 +217,7 @@ def test_process_inbox_without_actor_prefix(contract_bundle: Path) -> None:
     inbox = contract_bundle / ".roadmap" / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
 
-    payload = {"activity_event": {"action": "claim", "task_id": "T-1000"}}
+    payload = {"activity_event": {"action": "claim", "task_id": "T-1000", "prior_status": "todo"}}
     (inbox / "T-1000.json").write_text(json.dumps(payload), encoding="utf-8")
 
     result = service.process()
@@ -250,7 +246,7 @@ def test_process_dry_run(contract_bundle: Path) -> None:
     inbox = contract_bundle / ".roadmap" / "inbox"
     inbox.mkdir(parents=True, exist_ok=True)
 
-    payload = {"activity_event": {"action": "claim", "task_id": "T-1000"}}
+    payload = {"activity_event": {"action": "claim", "task_id": "T-1000", "prior_status": "todo"}}
     (inbox / "agent-spec__T-1000.json").write_text(
         json.dumps(payload), encoding="utf-8"
     )
@@ -260,5 +256,4 @@ def test_process_dry_run(contract_bundle: Path) -> None:
     assert result["accepted"] == 1
     events_after = parse_event_store(contract_bundle)
     assert len(events_after) == len(events_before)
-    # File not moved
     assert (inbox / "agent-spec__T-1000.json").exists()

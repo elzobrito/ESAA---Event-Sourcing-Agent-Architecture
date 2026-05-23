@@ -2,9 +2,9 @@
 
 > **Versão:** 0.4.1
 > **Alinhado a:** `AGENT_CONTRACT.yaml v0.4.1`, `ORCHESTRATOR_CONTRACT.yaml v0.4.1`,
-> `agent_result.schema.json v0.4.1`, `PARCER_PROFILE_agent-docs.yaml v0.4.1`
+> `agent_result.schema.json v0.4.1`, `PARCER_PROFILE.agent-docs.yaml v0.4.1`
 > **Em caso de divergência, os artefatos canônicos em `.roadmap/` prevalecem sobre este documento.**
-
+> **O ESAA não usa MCP**
 ---
 
 ## 0. Terminologia (leitura obrigatória antes de tudo)
@@ -195,7 +195,7 @@ Definidos pelo protocolo ESAA em `ORCHESTRATOR_CONTRACT.yaml#workflow_gates`. O 
 
 ## 6. Lessons ativas — restrições injetadas
 
-O Orchestrator injeta `.roadmap/lessons.json` (filtrado para `status=active` e `task_kind` aplicável) em **cada** invocação. Trate cada lesson com `enforcement.mode=reject` como **constraint inviolável**.
+O Orchestrator injeta `.roadmap/lessons.json` (filtrado para `status=active` e `task_kind` aplicável) em **cada** invocação. Trate cada lesson com `enforcement.mode` em {`reject`, `require_field`, `require_step`} como **constraint inviolável**.
 
 Lessons ativas atuais (v0.4.1):
 

@@ -33,7 +33,7 @@ def test_complete_by_non_owner_is_rejected() -> None:
     ]
     with pytest.raises(ESAAError) as exc:
         materialize(events)
-    assert exc.value.code == "NOT_LOCK_OWNER"
+    assert exc.value.code == "LOCK_VIOLATION"
 
 
 def test_done_is_immutable() -> None:
@@ -57,7 +57,7 @@ def test_done_is_immutable() -> None:
     ]
     with pytest.raises(ESAAError) as exc:
         materialize(events)
-    assert exc.value.code == "IMMUTABLE_DONE"
+    assert exc.value.code == "IMMUTABLE_DONE_VIOLATION"
 
 
 def test_task_description_fallback_from_title() -> None:
