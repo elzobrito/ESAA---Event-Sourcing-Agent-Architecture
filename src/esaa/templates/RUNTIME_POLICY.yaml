@@ -1,0 +1,36 @@
+version: "0.4.1"
+
+review_authorization: "qa_role"
+
+attempt_lifecycle:
+  ttl: "PT30M"
+  on_ttl_exceeded:
+    emit_event: "output.rejected"
+    error_code: "ATTEMPT_TIMEOUT"
+
+attempt_limits:
+  max_attempts_per_task: 3
+  cooldown_between_attempts: "PT2M"
+  on_limit_exceeded:
+    emit_event: "issue.report"
+    auto_severity: "high"
+
+issue_escalation:
+  rules:
+    - severity: "low"
+      action: "log_only"
+    - severity: "medium"
+      action: "log_and_flag"
+    - severity: "high"
+      action: "block_task"
+    - severity: "critical"
+      action: "halt_pipeline"
+
+verify_policy:
+  on_mismatch:
+    action: "reproject_or_halt"
+  on_corrupted:
+    action: "halt_and_snapshot"
+  snapshot_retention:
+    max_snapshots: 20
+    cleanup_policy: "oldest_first"

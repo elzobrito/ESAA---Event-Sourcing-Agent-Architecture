@@ -1,0 +1,305 @@
+meta:
+  contract_version: "0.4.1"
+  esaa_version: "0.4.x"
+  canonical: true
+  fail_closed: true
+  changelog:
+    - version: "0.4.1"
+      date: "2026-03-04"
+      changes:
+        - "prior_status adicionado aos required_fields do activity_event"
+        - "prior_status adicionado aos forbidden_fields do event store (agente não controla)"
+        - "Adicionado dispatch_model two_step com sequência obrigatória por invocação"
+        - "Adicionado action_constraints por status de tarefa recebido"
+        - "Adicionado file_updates_contract com restrição explícita a action=complete"
+        - "Adicionado workflow_gate_references mapeando violações a reject_codes"
+        - "verification_gate expandido com qa_min_checks e spec_min_checks"
+        - "Adicionado active_lessons_injection obrigando o Orchestrator a injetar lessons ativas"
+
+vocabulary:
+  allowed_agent_actions:
+    - claim
+    - complete
+    - review
+    - issue.report
+  reserved_orchestrator_actions:
+    - run.start
+    - run.end
+    - task.create
+    - hotfix.create
+    - issue.resolve
+    - output.rejected
+    - orchestrator.file.write
+    - orchestrator.view.mutate
+    - verify.start
+    - verify.ok
+    - verify.fail
+    - runner.metrics  # FIX-1812 — external runner telemetry (Claude Code, Codex, etc.)
+
+# ---------------------------------------------------------------------------
+# dispatch_model
+#
+# Define o contrato de invocação entre Orchestrator e agente.
+# O agente não controla o número de invocações — ele reage ao contexto.
+# ---------------------------------------------------------------------------
+dispatch_model:
+  model: "two_step_per_task"
+  description: >
+    O Orchestrator invoca o agente exatamente duas vezes por tarefa.
+    O campo task_status injetado no contexto determina qual ação é esperada.
+    O agente deve produzir exatamente uma action por invocação.
+
+  invocation_by_status:
+    todo:
+      expected_action: "claim"
+      allowed_actions: ["claim", "issue.report"]
+      forbidden_actions: ["complete", "review"]
+      reject_code_on_forbidden: "MISSING_CLAIM"
+
+    in_progress:
+      expected_action: "complete"
+      allowed_actions: ["complete", "issue.report"]
+      forbidden_actions: ["claim", "review"]
+      reject_code_on_forbidden: "MISSING_COMPLETE"
+      additional_constraint: "assigned_to deve coincidir com actor_id do agente"
+
+    review:
+      expected_action: "review"
+      allowed_actions: ["review", "issue.report"]
+      forbidden_actions: ["claim", "complete"]
+      reject_code_on_forbidden: "WORKFLOW_GATE_VIOLATION"
+
+    done:
+      expected_action: "none"
+      allowed_actions: ["issue.report"]
+      forbidden_actions: ["claim", "complete", "review"]
+      reject_code_on_forbidden: "IMMUTABLE_DONE_VIOLATION"
+      note: "Tarefa done é terminal. Qualquer ação que não seja issue.report é rejeitada."
+
+  one_action_per_output:
+    enabled: true
+    description: "Cada output deve conter exatamente um activity_event com uma action."
+    reject_code_on_violation: "ACTION_COLLAPSE"
+    derived_from: "LES-0001"
+
+# ---------------------------------------------------------------------------
+# output_contract
+# ---------------------------------------------------------------------------
+output_contract:
+  format:
+    json_only: true
+    forbid_markdown_outside_json: true
+    forbid_extra_root_keys: true
+    forbid_preamble: true
+    forbid_postamble: true
+
+  root_keys:
+    required:
+      - activity_event
+    optional:
+      - file_updates
+
+  activity_event:
+    required_fields:
+      - action
+      - task_id
+      - prior_status        # NOVO v0.4.1 — obrigatório em todo output
+    forbidden_fields:
+      - schema_version      # metadado de evento — exclusivo do Orchestrator
+      - event_id            # gerado pelo Orchestrator
+      - event_seq           # gerado pelo Orchestrator
+      - ts                  # gerado pelo Orchestrator
+      - actor               # inferido pelo Orchestrator a partir do dispatch
+      - payload             # wrapper de evento — exclusivo do Orchestrator
+      - assigned_to         # definido pelo Orchestrator ao processar claim
+      - started_at          # definido pelo Orchestrator ao processar claim
+      - completed_at        # definido pelo Orchestrator ao processar complete
+
+    prior_status:
+      description: >
+        Status da tarefa no momento em que o agente foi invocado.
+        Declarado pelo agente e validado pelo Orchestrator (WG-003).
+        Deve corresponder exatamente ao task_status do roadmap na hora da validação.
+        Nota (FIX-1810): 'done' só é válido quando action=issue.report — as demais actions
+        (claim/complete/review) são bloqueadas pelos `const` no `allOf` do
+        `agent_result.schema.json`. Permite reportar problemas em tarefa imutável
+        preservando evidência forense.
+      allowed_values: ["todo", "in_progress", "review", "done"]
+      coercion_rules:
+        - "action=claim       → prior_status DEVE ser 'todo'"
+        - "action=complete    → prior_status DEVE ser 'in_progress'"
+        - "action=review      → prior_status DEVE ser 'review'"
+        - "action=issue.report → prior_status pode ser qualquer valor permitido (todo, in_progress, review, done)"
+        - "action=issue.report + task em done → prior_status DEVE ser 'done' (preserva evidência forense; FIX-1810)"
+      on_mismatch:
+        reject_code: "PRIOR_STATUS_MISMATCH"
+        penaliza_counter: false
+        corrective_action: "re_inject_current_status_and_retry"
+
+  file_updates_contract:
+    description: >
+      file_updates é permitido exclusivamente quando action=complete.
+      A presença de file_updates em qualquer outro action é rejeição imediata.
+    permitido_apenas_quando: "action=complete"
+    forbidden_with_actions: ["claim", "review", "issue.report"]
+    reject_code_on_violation: "MISSING_COMPLETE"
+    derived_from: "LES-0002"
+    schema_ref: "agent_result.schema.json#/allOf/0"
+
+# ---------------------------------------------------------------------------
+# boundaries
+# ---------------------------------------------------------------------------
+boundaries:
+  enforcement: "fail_closed"
+  by_task_kind:
+    spec:
+      read:
+        - ".roadmap/**"
+        - "docs/**"
+      write:
+        - "docs/**"
+        - "readme.md"
+      forbidden_write:
+        - "src/**"
+        - "tests/**"
+        - ".roadmap/**"
+
+    impl:
+      read:
+        - ".roadmap/**"
+        - "docs/**"
+        - "src/**"
+        - "tests/**"
+      write:
+        - "src/**"
+        - "tests/**"
+      forbidden_write:
+        - ".roadmap/**"
+
+    qa:
+      read:
+        - ".roadmap/**"
+        - "docs/**"
+        - "src/**"
+        - "tests/**"
+      write:
+        - "docs/qa/**"
+        - "tests/**"
+      forbidden_write:
+        - "src/**"
+
+  patch_scope:
+    enabled: true
+    scope_field_name: "scope_patch"
+    allowlist_semantics: "prefix_match"
+    require_scope_patch_for_hotfix_tasks: true
+
+# ---------------------------------------------------------------------------
+# integrity_rules
+# ---------------------------------------------------------------------------
+integrity_rules:
+  immutable_done:
+    enabled: true
+    description: "done é terminal; correções devem usar o hotfix workflow"
+    reject_code: "IMMUTABLE_DONE_VIOLATION"
+
+  verification_gate:
+    description: "complete deve incluir verification.checks com mínimo de itens por task_kind"
+    spec_min_checks: 1
+    impl_min_checks: 1
+    qa_min_checks: 1
+    hotfix_min_checks: 2
+    reject_code_on_violation: "MISSING_VERIFICATION"
+    gate_ref: "WG-002"
+
+  sequence_gate:
+    description: "A sequência claim → complete deve ser respeitada por invocação"
+    reject_codes:
+      missing_claim: "MISSING_CLAIM"
+      missing_complete: "MISSING_COMPLETE"
+      action_collapse: "ACTION_COLLAPSE"
+    gate_refs:
+      - "WG-001"
+      - "WG-005"
+    derived_from:
+      - "LES-0001"
+      - "LES-0002"
+
+  lock_gate:
+    description: "complete só pode ser emitido pelo actor que realizou o claim (assigned_to)"
+    reject_code: "LOCK_VIOLATION"
+    gate_ref: "WG-004"
+
+# ---------------------------------------------------------------------------
+# workflow_gate_references
+#
+# Mapa de violações de contrato → reject_codes → gates do Orchestrator.
+# Permite rastreabilidade bidirecional entre contrato de agente e enforcement.
+# ---------------------------------------------------------------------------
+workflow_gate_references:
+  MISSING_CLAIM:
+    gate: "WG-001"
+    descricao: "complete/review emitido sem claim anterior ou com prior_status errado"
+    lessons: ["LES-0001"]
+
+  MISSING_COMPLETE:
+    gate: "WG-002"
+    descricao: "file_updates sem action=complete ou complete ausente após trabalho"
+    lessons: ["LES-0002"]
+
+  MISSING_VERIFICATION:
+    gate: "WG-002"
+    descricao: "complete sem verification.checks em tarefa impl/qa/hotfix"
+    lessons: []
+
+  PRIOR_STATUS_MISMATCH:
+    gate: "WG-003"
+    descricao: "prior_status declarado diverge do status real no roadmap"
+    lessons: ["LES-0003"]
+
+  LOCK_VIOLATION:
+    gate: "WG-004"
+    descricao: "complete emitido por actor diferente do assigned_to"
+    lessons: []
+
+  ACTION_COLLAPSE:
+    gate: "WG-005"
+    descricao: "output contém mais de um activity_event ou mistura actions"
+    lessons: ["LES-0001"]
+
+# ---------------------------------------------------------------------------
+# active_lessons_injection
+#
+# O Orchestrator DEVE injetar as lessons ativas no contexto de cada invocação.
+# Garante que o agente opera com as restrições derivadas de falhas passadas.
+# ---------------------------------------------------------------------------
+active_lessons_injection:
+  enabled: true
+  source: ".roadmap/lessons.json"
+  filter: "status=active"
+  inject_at:
+    - "invocation_1_claim"
+    - "invocation_2_complete"
+  format: >
+    Injeta como bloco estruturado no contexto do agente listando:
+    lesson_id, rule, enforcement.mode, enforcement.applies_to.
+    O agente deve tratar cada lesson ativa como constraint inviolável.
+
+# ---------------------------------------------------------------------------
+# hotfix_protocol
+# ---------------------------------------------------------------------------
+hotfix_protocol:
+  enabled: true
+  description: >
+    Correções em tarefas done não regridem o status original.
+    Uma nova tarefa hotfix é criada pelo Orchestrator referenciando a original.
+  flow:
+    - issue.report        # agente ou qa detecta o problema
+    - hotfix.create       # Orchestrator cria a nova tarefa hotfix
+    - claim               # agente faz claim da tarefa hotfix
+    - complete            # agente completa com min 2 verification.checks
+    - review              # qa revisa
+    - issue.resolve       # Orchestrator marca o issue como resolvido
+  verification_min_checks: 2
+  requires_scope_patch: true
+  original_task: "permanece em done — imutável"
