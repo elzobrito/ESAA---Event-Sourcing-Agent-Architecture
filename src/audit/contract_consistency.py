@@ -45,21 +45,29 @@ def main() -> int:
         m = re.search(pattern, p.read_text(encoding="utf-8"))
         return m.group(1) if m else None
 
-    versions = {
+    protocol_versions = {
         "AGENT_CONTRACT.yaml": declared_version(".roadmap/AGENT_CONTRACT.yaml", r'contract_version:\s*"([^"]+)"'),
         "ORCHESTRATOR_CONTRACT.yaml": declared_version(".roadmap/ORCHESTRATOR_CONTRACT.yaml", r'contract_version:\s*"([^"]+)"'),
         "agent_result.schema.json": declared_version(".roadmap/agent_result.schema.json", r'v(0\.\d\.\d)'),
         "constants.py(SCHEMA_VERSION)": declared_version("src/esaa/constants.py", r'SCHEMA_VERSION\s*=\s*"([^"]+)"'),
-        "pyproject.toml": declared_version("pyproject.toml", r'version\s*=\s*"([^"]+)"'),
         "roadmap.schema.json(const)": declared_version(".roadmap/roadmap.schema.json", r'"const":\s*"(0\.\d\.\d)"'),
     }
-    distinct = {v for v in versions.values() if v}
+    package_version = declared_version("pyproject.toml", r'version\s*=\s*"([^"]+)"')
+    distinct = {v for v in protocol_versions.values() if v}
     if len(distinct) > 1:
         findings.append({
             "id": "R3", "severity": "high",
             "title": "Version drift entre contratos e engine/projeções",
-            "evidence": versions,
-            "recommendation": "Migrar engine (constants/pyproject/roadmap.schema) para 0.4.1.",
+            "evidence": protocol_versions,
+            "recommendation": "Migrar contratos, schemas e constants.py para a mesma versao de protocolo.",
+        })
+    if package_version and not package_version.startswith("0.5.0"):
+        findings.append({
+            "id": "R-PACKAGE-VERSION",
+            "severity": "low",
+            "title": "Versao do pacote nao esta na linha publica beta esperada",
+            "evidence": {"pyproject.toml": package_version, "protocol_versions": protocol_versions},
+            "recommendation": "Manter pacote 0.5.0b1 enquanto o protocolo permanece em 0.4.1.",
         })
 
     # Convenção de nome dos PARCER profiles

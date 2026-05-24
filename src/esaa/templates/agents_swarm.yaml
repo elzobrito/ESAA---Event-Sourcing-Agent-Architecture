@@ -1,0 +1,49 @@
+meta:
+  registry_version: "0.4.1"
+  esaa_version: "0.4.x"
+  immutable_done: true
+
+agents:
+  agent-spec:
+    display_name: "agent-spec"
+    role: "specification"
+  agent-impl:
+    display_name: "agent-impl"
+    role: "implementation"
+  agent-qa:
+    display_name: "agent-qa"
+    role: "qa"
+  agent-mock:
+    display_name: "agent-mock"
+    role: "deterministic-offline-fixture"
+
+resolution:
+  by_task_kind:
+    spec:
+      agent: "agent-spec"
+      template: "spec.core"
+    impl:
+      agent: "agent-impl"
+      template: "impl.core"
+    qa:
+      agent: "agent-qa"
+      template: "qa.core"
+  overrides:
+    when_task_flag_is_hotfix:
+      impl:
+        agent: "agent-impl"
+        template: "impl.hotfix"
+
+templates:
+  spec.core:
+    task_kind: "spec"
+    output_contract_hint: "Emit claim|complete|review|issue.report with strict JSON envelope."
+  impl.core:
+    task_kind: "impl"
+    output_contract_hint: "complete requires verification.checks."
+  impl.hotfix:
+    task_kind: "impl"
+    output_contract_hint: "complete requires issue_id + fixes + min 2 checks."
+  qa.core:
+    task_kind: "qa"
+    output_contract_hint: "Review with approve/request_changes; report defects with evidence."

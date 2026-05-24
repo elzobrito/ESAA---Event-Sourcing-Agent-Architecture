@@ -1,0 +1,10 @@
+include LICENSE
+include CHANGELOG.md
+include CONTRIBUTING.md
+include CODE_OF_CONDUCT.md
+include readme.md
+recursive-include docs *.md
+recursive-include examples *.md
+recursive-include src/esaa/templates *
+global-exclude __pycache__/*
+global-exclude *.py[cod]

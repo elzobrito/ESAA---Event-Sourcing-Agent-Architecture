@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from .adapters.http_llm import HttpLlmAdapter
+from .bootstrap import bootstrap_workspace
 from .errors import ESAAError
 from .scenarios import run_hotfix_trace
 from .snapshot import compact_event_store, create_snapshot
@@ -33,6 +34,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default=".", help="project root path")
 
     sub = parser.add_subparsers(dest="command", required=True)
+
+    cmd_bootstrap = sub.add_parser("bootstrap", help="install packaged ESAA governance templates")
+    cmd_bootstrap.add_argument("--profile", choices=["public", "production"], default="public")
+    cmd_bootstrap.add_argument("--force", action="store_true")
 
     cmd_init = sub.add_parser("init", help="initialize canonical clean-state")
     cmd_init.add_argument("--run-id", default="RUN-0001")
@@ -208,7 +213,9 @@ def main(argv: list[str] | None = None) -> int:
     service = ESAAService(root=root, adapter=adapter)
 
     try:
-        if args.command == "init":
+        if args.command == "bootstrap":
+            result = bootstrap_workspace(root, profile=args.profile, force=args.force)
+        elif args.command == "init":
             result = service.init(
                 run_id=args.run_id,
                 master_correlation_id=args.master_correlation_id,

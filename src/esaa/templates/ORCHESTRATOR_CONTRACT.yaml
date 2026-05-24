@@ -1,0 +1,278 @@
+meta:
+  contract_version: "0.4.1"
+  esaa_version: "0.4.x"
+  canonical: true
+  fail_closed: true
+  changelog:
+    - version: "0.4.1"
+      date: "2026-03-04"
+      changes:
+        - "Added workflow_gates section to enforce claim-before-work and complete-after-work"
+        - "Added dispatch_protocol defining two-step invocation model (claim / complete)"
+        - "Added missing_claim and missing_complete to validation.reject_on"
+        - "Added workflow_gate_violation to validation.reject_on"
+        - "Added prior_status_mismatch to validation.reject_on"
+
+roles:
+  orchestrator:
+    is_single_writer: true
+    reserved_actions:
+      - run.start
+      - run.end
+      - task.create
+      - hotfix.create
+      - issue.resolve
+      - output.rejected
+      - orchestrator.file.write
+      - orchestrator.view.mutate
+      - verify.start
+      - verify.ok
+      - verify.fail
+      - runner.metrics  # FIX-1812 — external runner telemetry
+
+event_store:
+  path: ".roadmap/activity.jsonl"
+  format: "jsonl"
+  append_only: true
+  ordering:
+    field: "event_seq"
+    monotonic: true
+    no_gaps: true
+
+read_models:
+  roadmap:
+    path: ".roadmap/roadmap.json"
+    schema: ".roadmap/roadmap.schema.json"
+  issues:
+    path: ".roadmap/issues.json"
+    schema: ".roadmap/issues.schema.json"
+  lessons:
+    path: ".roadmap/lessons.json"
+    schema: ".roadmap/lessons.schema.json"
+
+validation:
+  agent_result_schema: ".roadmap/agent_result.schema.json"
+  agent_contract: ".roadmap/AGENT_CONTRACT.yaml"
+  reject_on:
+    - unknown_action
+    - schema_violation
+    - boundary_violation
+    - immutable_done_violation
+    - lock_violation
+    - invalid_transition
+    - missing_claim          # agente emitiu complete/review sem claim anterior
+    - missing_complete       # agente entregou file_updates sem action: complete
+    - workflow_gate_violation # sequência de ações violou o dispatch_protocol
+    - prior_status_mismatch  # prior_status declarado diverge do status real no roadmap
+
+# ---------------------------------------------------------------------------
+# dispatch_protocol
+#
+# Define o modelo de duas invocações por tarefa.
+# O Orchestrator DEVE despachar o agente duas vezes por tarefa:
+#   Invocação 1 (claim)    → tarefa em status 'todo'
+#   Invocação 2 (complete) → tarefa em status 'in_progress' e assigned_to == actor
+#
+# Nenhuma das duas invocações pode colapsar as duas ações em um único output.
+# ---------------------------------------------------------------------------
+dispatch_protocol:
+  model: "two_step_per_task"
+  description: >
+    Cada tarefa exige exatamente duas invocações de agente separadas:
+    primeiro 'claim', depois 'complete' (ou 'issue.report' se bloqueada).
+    O Orchestrator injeta o task_status atual no contexto de cada invocação.
+
+  invocation_1:
+    label: "claim"
+    precondition:
+      task_status: "todo"
+    expected_action: "claim"
+    context_injected:
+      - task_id
+      - task_kind
+      - task_status       # sempre "todo" nesta invocação
+      - task_description
+      - boundaries
+      - active_lessons
+    allowed_output_actions:
+      - claim             # caminho normal
+      - issue.report      # bloqueio imediato sem início
+    forbidden_output_actions:
+      - complete
+      - review
+    on_forbidden_action:
+      reject_code: "MISSING_CLAIM"
+      emit_event: "output.rejected"
+      increment_attempt_counter: true
+
+  invocation_2:
+    label: "complete"
+    precondition:
+      task_status: "in_progress"
+      assigned_to: "must_match_actor"   # lock: apenas quem fez claim pode completar
+    expected_action: "complete"
+    context_injected:
+      - task_id
+      - task_kind
+      - task_status       # sempre "in_progress" nesta invocação
+      - task_description
+      - boundaries
+      - active_lessons
+      - prior_file_state  # estado atual dos arquivos relevantes
+    allowed_output_actions:
+      - complete          # caminho normal
+      - issue.report      # bloqueio durante execução
+    forbidden_output_actions:
+      - claim
+      - review
+    on_forbidden_action:
+      reject_code: "MISSING_COMPLETE"
+      emit_event: "output.rejected"
+      increment_attempt_counter: true
+    on_file_updates_without_complete:
+      # file_updates sem action: complete é output inválido
+      reject_code: "MISSING_COMPLETE"
+      emit_event: "output.rejected"
+      increment_attempt_counter: true
+
+# ---------------------------------------------------------------------------
+# workflow_gates
+#
+# Validações de sequência executadas pelo Orchestrator ANTES de persistir
+# qualquer evento. Operação fail-closed: rejeição antes de qualquer efeito.
+# ---------------------------------------------------------------------------
+workflow_gates:
+  enabled: true
+  enforcement: "fail_closed"
+
+  gate_claim_before_work:
+    id: "WG-001"
+    description: >
+      Garante que 'complete' e 'review' só sejam aceitos se a tarefa
+      já estiver em 'in_progress' (ou 'review' para review) no roadmap.
+      Impede que o agente pule o passo de claim.
+    check:
+      action_received: ["complete", "review"]
+      required_prior_task_status:
+        complete: "in_progress"
+        review: "review"
+    on_violation:
+      reject_code: "MISSING_CLAIM"
+      emit_event: "output.rejected"
+      log_level: "error"
+      increment_attempt_counter: true
+
+  gate_complete_requires_verification:
+    id: "WG-002"
+    description: >
+      Garante que todo 'complete' de tarefa impl ou qa inclua
+      verification.checks com pelo menos o mínimo definido no AGENT_CONTRACT.
+    check:
+      action_received: "complete"
+      task_kind_in: ["impl", "qa"]
+      required_field: "verification.checks"
+      min_items:
+        impl: 1
+        qa: 1
+        hotfix: 2
+    on_violation:
+      reject_code: "MISSING_VERIFICATION"
+      emit_event: "output.rejected"
+      log_level: "error"
+      increment_attempt_counter: true
+
+  gate_prior_status_consistency:
+    id: "WG-003"
+    description: >
+      Valida que o campo prior_status declarado pelo agente no output
+      corresponde ao status real da tarefa no roadmap no momento da validação.
+      Detecta desincronização de contexto ou tentativa de spoofing.
+    check:
+      field: "activity_event.prior_status"
+      must_equal: "roadmap.tasks[task_id].status"
+    on_violation:
+      reject_code: "PRIOR_STATUS_MISMATCH"
+      emit_event: "output.rejected"
+      log_level: "warn"
+      increment_attempt_counter: false  # não penaliza: provável lag de contexto
+      corrective_action: "re_inject_current_status_and_retry"
+
+  gate_lock_ownership:
+    id: "WG-004"
+    description: >
+      Garante que 'complete' só seja aceito pelo mesmo actor que emitiu
+      o 'claim' correspondente (campo assigned_to no roadmap).
+    check:
+      action_received: "complete"
+      required_condition: "activity_event.actor == roadmap.tasks[task_id].assigned_to"
+    on_violation:
+      reject_code: "LOCK_VIOLATION"
+      emit_event: "output.rejected"
+      log_level: "error"
+      increment_attempt_counter: true
+
+  gate_no_action_collapse:
+    id: "WG-005"
+    description: >
+      Proíbe que um único output contenha múltiplas ações em sequência.
+      Cada output deve ter exatamente um activity_event com uma action.
+      Regra derivada de LES-0001.
+    check:
+      max_activity_events_per_output: 1
+    on_violation:
+      reject_code: "ACTION_COLLAPSE"
+      emit_event: "output.rejected"
+      log_level: "error"
+      increment_attempt_counter: true
+
+# ---------------------------------------------------------------------------
+# state_machine (inalterado funcionalmente; prior_status adicionado como
+# campo verificado pelo WG-003 antes de cada transição)
+# ---------------------------------------------------------------------------
+state_machine:
+  task_status_enum: ["todo", "in_progress", "review", "done"]
+  transitions:
+    - from: "todo"
+      on_action: "claim"
+      to: "in_progress"
+      sets_fields:
+        - assigned_to
+        - started_at
+    - from: "in_progress"
+      on_action: "complete"
+      to: "review"
+      sets_fields:
+        - completed_at
+        - verification
+    - from: "review"
+      on_action: "review"
+      decision: "approve"
+      to: "done"
+    - from: "review"
+      on_action: "review"
+      decision: "request_changes"
+      to: "in_progress"
+      clears_fields:
+        - completed_at
+
+immutability:
+  done_is_terminal: true
+  reject_status_regression_from_done: true
+  correction_flow:
+    trigger_action: "issue.report"
+    orchestrator_action: "hotfix.create"
+
+pipeline:
+  deterministic_steps:
+    - parse_event_store
+    - select_next_eligible_task
+    - dispatch_agent             # step 1: claim (invocation_1)
+    - validate_agent_output      # WG-001..005 aplicados aqui
+    - append_events
+    - project_views
+    - verify_projection
+    - dispatch_agent             # step 2: complete (invocation_2)
+    - validate_agent_output      # WG-001..005 aplicados novamente
+    - append_events
+    - project_views
+    - verify_projection

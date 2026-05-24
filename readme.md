@@ -15,6 +15,43 @@ protocol directly over `.roadmap/`; it does not use MCP.
 
 Paper: [ESAA: Event Sourcing for Autonomous Agents in LLM-Based Software Engineering](https://arxiv.org/pdf/2602.23193)
 
+## Public Beta
+
+`esaa-core` is prepared for a public beta package as `0.5.0b1`. The protocol and
+schemas remain at `0.4.1`; the package version marks release readiness, not a
+protocol break.
+
+Install the beta package:
+
+```bash
+python -m pip install esaa-core==0.5.0b1
+```
+
+Start a clean workspace:
+
+```bash
+mkdir esaa-demo
+cd esaa-demo
+esaa bootstrap --profile public
+esaa init
+esaa verify
+esaa eligible
+```
+
+`bootstrap` installs packaged governance templates only. It does not create or
+overwrite `.roadmap/activity.jsonl`, read models, artifacts, backups, or
+snapshots.
+
+For production workspaces, use:
+
+```bash
+esaa bootstrap --profile production
+```
+
+The production profile keeps independent QA review enabled and is intended to
+be used with pinned package versions, backups, snapshots, `verify`, and
+`runner.metrics`.
+
 ## Why ESAA Exists
 
 LLM-based engineering agents are powerful, but their default execution model is
@@ -350,6 +387,29 @@ example when the log proves a task is `done` but a read model still shows it as
 `todo`.
 
 ## Local Runtime: esaa-core
+
+The public CLI is installed as:
+
+```bash
+esaa --help
+```
+
+When developing from this repository instead of an installed wheel, set the
+local source path first:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m esaa --root . --help
+```
+
+On Linux/macOS:
+
+```bash
+PYTHONPATH=src python -m esaa --root . --help
+```
+
+New external workspaces should run `esaa bootstrap` before `esaa init` so the
+required contracts and schemas are present.
 
 `esaa-core` is the deterministic runtime in this repository. It exposes the
 Orchestrator operations through `python -m esaa`.
