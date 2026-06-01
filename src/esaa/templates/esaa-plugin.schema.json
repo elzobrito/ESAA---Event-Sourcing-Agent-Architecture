@@ -60,6 +60,48 @@
     "capabilities": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
+    },
+    "external_targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "root_input", "allowed_write", "runtime_contract"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[-_][a-z0-9]+)*$"
+          },
+          "root_input": {
+            "type": "string",
+            "minLength": 1
+          },
+          "allowed_write": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "runtime_contract": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runtime_uri_prefixes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^runtime://[A-Za-z0-9_.-]+\\.$"
+            }
+          },
+          "runtime_uri_prefix": {
+            "type": "string",
+            "pattern": "^runtime://[A-Za-z0-9_.-]+\\.$"
+          }
+        }
+      }
     }
   }
 }

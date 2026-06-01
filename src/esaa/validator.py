@@ -7,6 +7,7 @@ from typing import Any
 from jsonschema import ValidationError, validate
 
 from .errors import ESAAError
+from .external_effects import task_accepts_external_path
 from .state_machine import REJECT_PRIOR_MISMATCH, allowed_actions_for
 from .utils import normalize_rel_path
 
@@ -27,6 +28,8 @@ def _matches_any(path: str, patterns: list[str]) -> bool:
 
 
 def _validate_safe_path(path: str) -> str:
+    if path.startswith("runtime://"):
+        return path
     norm = normalize_rel_path(path)
     if not norm or norm.startswith("/") or norm.startswith(".."):
         raise ESAAError("BOUNDARY_VIOLATION", f"invalid path: {path}")
@@ -110,6 +113,8 @@ def _validate_boundaries(updates: list[dict[str, str]], contract: dict[str, Any]
 
     for item in updates:
         path = _validate_safe_path(item["path"])
+        if path.startswith("runtime://") and task_accepts_external_path(task, path):
+            continue
         if not _matches_any(path, allowlist):
             raise ESAAError("BOUNDARY_VIOLATION", f"path not allowed for {task['task_kind']}: {path}")
         if denylist and _matches_any(path, denylist):

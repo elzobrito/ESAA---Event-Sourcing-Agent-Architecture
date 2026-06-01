@@ -15,7 +15,7 @@ def test_mock_adapter_uses_kind_safe_fallback_when_declared_outputs_are_logical(
                 "outputs": {
                     "files": [
                         "docs/sso-clients/runtime-contract.json",
-                        "runtime://sso_file_plan.all_in_one_client",
+                        "runtime://outputs.all_in_one_client",
                     ]
                 },
             }
@@ -34,7 +34,7 @@ def test_mock_adapter_skips_runtime_uri_for_qa_tasks() -> None:
                 "task_id": "sso-client-default-T-006",
                 "task_kind": "qa",
                 "status": "in_progress",
-                "outputs": {"files": ["runtime://sso_file_plan.tests"]},
+                "outputs": {"files": ["runtime://outputs.tests"]},
             }
         }
     )

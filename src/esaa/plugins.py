@@ -107,6 +107,13 @@ def _validate_output_path(value: str, label: str) -> str:
     return normalized
 
 
+def _validate_glob_pattern(value: str, label: str) -> str:
+    normalized = _validate_relative_path(value, label)
+    if normalized.startswith("runtime://"):
+        raise ESAAError("PLUGIN_PATH_INVALID", f"{label} must be a relative glob pattern: {value}")
+    return normalized
+
+
 def _resolve_workspace_file(root: Path, path_arg: str, label: str) -> tuple[Path, str]:
     normalized = _validate_relative_path(path_arg, label)
     candidate = Path(normalized)
@@ -221,6 +228,16 @@ def validate_plugin_dir(plugin_dir: Path, repo_root: Path | None = None) -> dict
     if manifest.get("kind") != "roadmap_plugin":
         raise ESAAError("PLUGIN_SCHEMA_INVALID", f"unsupported plugin kind: {manifest.get('kind')}")
 
+    external_target_ids: set[str] = set()
+    for idx, target in enumerate(manifest.get("external_targets", []) or []):
+        target_id = target["id"]
+        if target_id in external_target_ids:
+            raise ESAAError("PLUGIN_SCHEMA_INVALID", f"duplicate external target: {target_id}")
+        external_target_ids.add(target_id)
+        _validate_relative_path(target["runtime_contract"], f"external_targets[{idx}].runtime_contract")
+        for pattern_idx, pattern in enumerate(target.get("allowed_write", [])):
+            _validate_glob_pattern(pattern, f"external_targets[{idx}].allowed_write[{pattern_idx}]")
+
     forbidden = [
         ".roadmap/activity.jsonl",
         ".roadmap/roadmap.json",
@@ -259,6 +276,20 @@ def validate_plugin_dir(plugin_dir: Path, repo_root: Path | None = None) -> dict
             if not isinstance(output_path, str):
                 raise ESAAError("PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.files[{out_idx}] must be a string")
             _validate_output_path(output_path, f"tasks[{idx}].outputs.files[{out_idx}]")
+        external_files = outputs.get("external_files", [])
+        if external_files:
+            if not isinstance(external_files, list):
+                raise ESAAError("PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.external_files must be an array")
+            for ext_idx, external in enumerate(external_files):
+                if not isinstance(external, dict):
+                    raise ESAAError("PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.external_files[{ext_idx}] must be an object")
+                target_id = external.get("target") or outputs.get("target")
+                if target_id not in external_target_ids:
+                    raise ESAAError("PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.external_files[{ext_idx}] target is not declared")
+                path = external.get("path")
+                if not isinstance(path, str):
+                    raise ESAAError("PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.external_files[{ext_idx}].path must be a string")
+                _validate_output_path(path, f"tasks[{idx}].outputs.external_files[{ext_idx}].path")
         effective_task_id(plugin_id, "default", task["task_id"])
 
     input_schema = entrypoints.get("input_schema")

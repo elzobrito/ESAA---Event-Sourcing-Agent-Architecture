@@ -29,6 +29,7 @@ from .constants import ESAA_VERSION, SCHEMA_VERSION
 from .dispatch import build_minimal_context
 
 from .errors import CorruptedStoreError, ESAAError
+from .external_effects import resolve_external_file_updates
 from .file_effects import (
     commit_staged,
     compute_file_metadata,
@@ -168,7 +169,20 @@ def _normalize_file_updates(file_updates: list[dict[str, str]]) -> list[dict[str
 def _dry_run_file_effects(root: Path, file_updates: list[dict[str, str]]) -> list[dict[str, Any]]:
     effects: list[dict[str, Any]] = []
     for item in file_updates:
-        meta = compute_file_metadata(root, item["path"], item["content"])
+        extra = {
+            "effect_scope": item.get("_esaa_effect_scope", "workspace"),
+            "source_path": item.get("_esaa_source_path", item["path"]),
+            "target": item.get("_esaa_target"),
+            "target_root": item.get("_esaa_target_root"),
+            "target_path": item.get("_esaa_target_path"),
+        }
+        meta = compute_file_metadata(
+            root,
+            item["path"],
+            item["content"],
+            final_abs_path=item.get("_esaa_final_abs_path"),
+            extra=extra,
+        )
         meta["artifact_sha256"] = None
         meta["artifact_path"] = None
         effects.append(meta)
@@ -1469,10 +1483,12 @@ class ESAAService:
         new_events: list[dict[str, Any]] = []
         files_written = 0
         staged_file_effects: list[dict[str, Any]] = []
+        effects_for_result: list[dict[str, Any]] = []
 
         try:
             validated_event, file_updates = validate_agent_output(agent_output, schema, contract, task)
             file_updates = _normalize_file_updates(file_updates)
+            file_updates = resolve_external_file_updates(self.root, task, file_updates)
             # FIX-1807: review_authorization=qa_role -> resolve role e injeta _reviewer_role no payload
             if validated_event["action"] == "review":
                 from .runtime_policy import resolve_role, review_authorization_mode
@@ -1509,6 +1525,7 @@ class ESAAService:
                     current_seq + 1, actor="orchestrator", action="orchestrator.file.write",
                     payload=_file_write_payload(task_id, effects)
                 )
+                effects_for_result = effects
                 candidate_events.append(write_event)
                 _ = materialize(events + candidate_events)
                 files_written += len(file_updates)
@@ -1599,6 +1616,19 @@ class ESAAService:
             result["would_append_events"] = len(new_events)
             result["simulated_last_event_seq"] = result["last_event_seq"]
             result["simulated_projection_hash_sha256"] = result["projection_hash_sha256"]
+            external_effects = [
+                {
+                    "target": effect.get("target"),
+                    "source": effect.get("source_path") or effect.get("path"),
+                    "resolved_path": effect.get("absolute_path"),
+                    "target_path": effect.get("target_path"),
+                    "allowed": True,
+                }
+                for effect in effects_for_result
+                if effect.get("effect_scope") == "external"
+            ]
+            if external_effects:
+                result["external_effects"] = external_effects
         return result
 
 
@@ -1706,6 +1736,7 @@ class ESAAService:
         current_seq = next_event_seq(events + new_events)
         activity_event, file_updates = validate_agent_output(output, schema, contract, task)
         file_updates = _normalize_file_updates(file_updates)
+        file_updates = resolve_external_file_updates(self.root, task, file_updates)
         known_roadmap, _, _ = materialize(events + new_events)
         known_task_ids = {item["task_id"] for item in known_roadmap.get("tasks", [])}
         candidate_events: list[dict[str, Any]] = []
