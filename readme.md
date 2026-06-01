@@ -17,14 +17,14 @@ Paper: [ESAA: Event Sourcing for Autonomous Agents in LLM-Based Software Enginee
 
 ## Public Beta
 
-`esaa-core` is prepared for a public beta package as `0.5.0b1`. The protocol and
+`esaa-core` is prepared for a public beta package as `0.5.0b2`. The protocol and
 schemas remain at `0.4.1`; the package version marks release readiness, not a
 protocol break.
 
 Install the beta package:
 
 ```bash
-python -m pip install esaa-core==0.5.0b1
+python -m pip install esaa-core==0.5.0b2
 esaa --version
 ```
 
@@ -39,8 +39,9 @@ esaa verify
 esaa eligible
 ```
 
-`bootstrap` installs packaged governance templates only. It does not create or
-overwrite `.roadmap/activity.jsonl`, read models, artifacts, backups, or
+`bootstrap` installs the full packaged governance bundle: contracts, schemas,
+runtime/storage policy, projection spec, and PARCER profiles. It does not create
+or overwrite `.roadmap/activity.jsonl`, read models, artifacts, backups, or
 snapshots.
 
 For production workspaces, use:
@@ -439,7 +440,7 @@ PYTHONPATH=src python -m esaa --root . --help
 ```
 
 New external workspaces should run `esaa bootstrap` before `esaa init` so the
-required contracts and schemas are present.
+full governance bundle is present.
 
 `esaa-core` is the deterministic runtime in this repository. It exposes the
 Orchestrator operations through `python -m esaa`.

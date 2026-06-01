@@ -20,6 +20,17 @@ from esaa.errors import ESAAError
 from esaa.service import ESAAService
 
 
+ESSENTIAL_GOVERNANCE_FILES = (
+    "STORAGE_POLICY.yaml",
+    "PROJECTION_SPEC.md",
+    "PARCER_PROFILE.agent-docs.yaml",
+    "PARCER_PROFILE.agent-spec.yaml",
+    "PARCER_PROFILE.agent-impl.yaml",
+    "PARCER_PROFILE.agent-qa.yaml",
+    "PARCER_PROFILE.orchestrator-runtime.yaml",
+)
+
+
 def _run_cli(root: Path, *args: str) -> dict:
     stdout = io.StringIO()
     with contextlib.redirect_stdout(stdout):
@@ -34,7 +45,10 @@ def test_bootstrap_creates_required_governance_files(tmp_path: Path) -> None:
     assert result["status"] == "bootstrapped"
     assert result["profile"] == "public"
     assert sorted(result["files_written"]) == sorted(f".roadmap/{name}" for name in GOVERNANCE_TEMPLATE_FILES)
+    assert set(ESSENTIAL_GOVERNANCE_FILES) <= set(GOVERNANCE_TEMPLATE_FILES)
     for name in GOVERNANCE_TEMPLATE_FILES:
+        assert (tmp_path / ".roadmap" / name).exists()
+    for name in ESSENTIAL_GOVERNANCE_FILES:
         assert (tmp_path / ".roadmap" / name).exists()
 
     assert not (tmp_path / ".roadmap" / "activity.jsonl").exists()
@@ -100,6 +114,12 @@ def test_package_data_contains_templates() -> None:
     assert all(template_root.joinpath(name).is_file() for name in GOVERNANCE_TEMPLATE_FILES)
 
 
+def test_packaged_governance_templates_match_canonical_files(repo_root: Path) -> None:
+    template_root = repo_root / "src/esaa/templates"
+    for name in ESSENTIAL_GOVERNANCE_FILES:
+        assert (template_root / name).read_bytes() == (repo_root / ".roadmap" / name).read_bytes()
+
+
 def test_pyproject_public_metadata(repo_root: Path) -> None:
     data = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     project = data["project"]
@@ -143,7 +163,7 @@ def test_governance_bundle_versions_are_aligned(repo_root: Path) -> None:
 def test_bootstrap_installed_console_smoke(tmp_path: Path, repo_root: Path) -> None:
     if not (repo_root / "dist").exists():
         return
-    wheels = sorted((repo_root / "dist").glob("esaa_core-0.5.0b1-*.whl"))
+    wheels = sorted((repo_root / "dist").glob(f"esaa_core-{PACKAGE_VERSION}-*.whl"))
     if not wheels:
         return
 

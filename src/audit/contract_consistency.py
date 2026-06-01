@@ -67,7 +67,7 @@ def main() -> int:
             "severity": "low",
             "title": "Versao do pacote nao esta na linha publica beta esperada",
             "evidence": {"pyproject.toml": package_version, "protocol_versions": protocol_versions},
-            "recommendation": "Manter pacote 0.5.0b1 enquanto o protocolo permanece em 0.4.1.",
+            "recommendation": "Manter pacote na linha 0.5.0b* enquanto o protocolo permanece em 0.4.1.",
         })
 
     # Convenção de nome dos PARCER profiles
