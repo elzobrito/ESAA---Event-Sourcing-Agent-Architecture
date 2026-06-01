@@ -1,9 +1,10 @@
 # Changelog
 
-## 0.5.0b1 - Public Beta
+## 0.5.0b1
 
-- Added packaged ESAA governance templates for public workspaces.
-- Added `esaa bootstrap` with `public` and `production` profiles.
-- Added public release metadata, MIT license, contribution docs, quickstart, examples, CI, and release workflow.
-- Kept ESAA protocol/schema version at `0.4.1` while preparing the Python package beta as `0.5.0b1`.
-- Documented production operation, external runners, and package smoke-test flow.
+Public beta preparation for `esaa-core`.
+
+This release focuses on the local ESAA runtime, deterministic verification,
+installable roadmap plugins, bundled plugin examples, external runner metrics,
+hotfix flow, snapshots, and publication-ready package assets.
+

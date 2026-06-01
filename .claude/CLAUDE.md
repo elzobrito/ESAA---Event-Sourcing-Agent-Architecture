@@ -347,7 +347,7 @@ Após 3 falhas, o harness emite `issue.report severity=high` via Orchestrator e 
 **Ações permitidas ao agente:** `claim`, `complete`, `review`, `issue.report`
 
 **Ações reservadas ao Orchestrator (você nunca emite):**
-`run.start`, `run.end`, `task.create`, `hotfix.create`, `issue.resolve`, `output.rejected`, `orchestrator.file.write`, `orchestrator.view.mutate`, `verify.start`, `verify.ok`, `verify.fail`, `runner.metrics` (FIX-1812 — telemetria de runners externos).
+`run.start`, `run.end`, `task.create`, `hotfix.create`, `issue.resolve`, `output.rejected`, `orchestrator.file.write`, `orchestrator.view.mutate`, `verify.start`, `verify.ok`, `verify.fail`, `runner.metrics` (FIX-1812 — telemetria de runners externos), `plugin.install`, `plugin.remove`, `plugin.update`, `roadmap.activate`, `roadmap.pause`, `roadmap.resume`, `roadmap.deactivate`.
 
 **Estados de tarefa:** `todo` → `in_progress` → `review` → `done` (com `review→in_progress` em caso de `request_changes`)
 
