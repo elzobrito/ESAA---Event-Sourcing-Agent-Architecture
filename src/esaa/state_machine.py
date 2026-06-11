@@ -1,16 +1,15 @@
-"""Maquina de estado canonica do ESAA — autoridade local (RF01).
+"""Maquina de estado canonica do ESAA - autoridade local (RF01).
 
 Centraliza as transicoes e os reject_codes do contrato. Outros modulos
 (projector, validator, dispatch, service) consultam este modulo em vez
 de re-derivar regras.
 
 Diagrama:
-                claim                 complete             review(approve)
-    [todo] ─────────────► [in_progress] ─────────────► [review] ─────────────► [done] ✗
-                                ▲                         │                       (immutable)
-                                └─────────────────────────┘
-                                  review(request_changes)
+    [todo] --claim--> [in_progress] --complete--> [review]
+    [review] --review(approve)--> [done] (immutable)
+    [review] --review(request_changes)--> [in_progress]
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -77,7 +76,7 @@ def next_status(current: str, action: str, decision: Optional[str] = None) -> Op
 def classify_transition(current: str, action: str) -> tuple[bool, Optional[str]]:
     """Valida uma transicao e devolve (ok, reject_code).
 
-    Mapeia cada combinacao invalida ao reject_code do contrato — em vez de
+    Mapeia cada combinacao invalida ao reject_code do contrato - em vez de
     cair sempre em INVALID_TRANSITION generico.
     """
     if action == "issue.report":
@@ -89,7 +88,7 @@ def classify_transition(current: str, action: str) -> tuple[bool, Optional[str]]
     if action == "claim":
         if current == "todo":
             return True, None
-        # in_progress/review com claim → ja em uso
+        # in_progress/review com claim -> ja em uso
         return False, REJECT_LOCK
 
     if action == "complete":
@@ -97,7 +96,7 @@ def classify_transition(current: str, action: str) -> tuple[bool, Optional[str]]
             return True, None
         if current == "todo":
             return False, REJECT_MISSING_CLAIM  # pulou claim
-        # current == review → ja em revisao
+        # current == review -> ja em revisao
         return False, REJECT_WORKFLOW_GATE
 
     if action == "review":

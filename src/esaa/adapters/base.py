@@ -14,4 +14,3 @@ class AgentAdapter(ABC):
     @abstractmethod
     def health(self) -> dict[str, str]:
         raise NotImplementedError
-

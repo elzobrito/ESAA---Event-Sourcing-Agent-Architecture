@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.audit.critical_findings import run_checks
+from tools.audit.critical_findings import run_checks
 
 
 def test_behavioral_critical_findings_are_clean(repo_root: Path) -> None:

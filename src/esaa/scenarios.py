@@ -11,7 +11,6 @@ from .projector import materialize
 from .service import ESAAService
 from .store import parse_event_store
 
-
 HOTFIX_FLOW = [
     "issue.report",
     "hotfix.create",

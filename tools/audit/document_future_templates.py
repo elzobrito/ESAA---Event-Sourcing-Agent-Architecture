@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""FIX-1531 — Cria docs/spec/activity_future_templates.md documentando o arquivo."""
+"""FIX-1531 â€” Cria docs/spec/activity_future_templates.md documentando o arquivo."""
+
 from __future__ import annotations
 import argparse
 from pathlib import Path

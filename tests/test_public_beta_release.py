@@ -157,7 +157,9 @@ def test_pyproject_public_metadata(repo_root: Path) -> None:
     data = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     project = data["project"]
 
-    assert project["version"] == PACKAGE_VERSION
+    assert "version" not in project
+    assert "version" in project.get("dynamic", [])
+    assert data["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "esaa.constants.PACKAGE_VERSION"
     assert project["license"] == "MIT"
     assert project["authors"] == [{"name": "ESAA Contributors"}]
     assert project["urls"]["Homepage"] == "https://github.com/elzobrito/ESAA---Event-Sourcing-Agent-Architecture"

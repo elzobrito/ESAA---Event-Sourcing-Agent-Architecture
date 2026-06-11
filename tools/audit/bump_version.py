@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""FIX-1551 — Atualiza arquivos fora da boundary impl (pyproject.toml, roadmap.schema.json)
+"""FIX-1551 â€” Atualiza arquivos fora da boundary impl (pyproject.toml, roadmap.schema.json)
 para alinhar a 0.4.1.
 """
+
 from __future__ import annotations
 import argparse, json, re
 from pathlib import Path

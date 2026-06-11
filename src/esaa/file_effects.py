@@ -1,4 +1,4 @@
-"""FIX-1805 / FIX-1808 â€” Atomic file effects + content-addressed artifacts.
+"""FIX-1805 / FIX-1808 — Atomic file effects + content-addressed artifacts.
 
 
 
@@ -22,28 +22,16 @@ API:
 
 from __future__ import annotations
 
-
-
 import hashlib
 import json
 import os
-import tempfile
 from datetime import datetime, timezone
-
 from pathlib import Path
-
 from typing import Any
-
-
-
-
 
 STAGING_DIR = ".roadmap/staging"
 
 ARTIFACT_DIR = ".roadmap/artifacts/file-effects"
-
-
-
 
 
 def _utc_now_iso() -> str:
@@ -51,19 +39,12 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-
-
-
 def _sha256_bytes(data: bytes) -> str:
 
     return hashlib.sha256(data).hexdigest()
 
 
-
-
-
 def stage_file_updates(root: Path, file_updates: list[dict[str, str]]) -> list[dict[str, Any]]:
-
     """Stage file_updates em .roadmap/staging/. Returns list of staged records."""
 
     staging_root = root / STAGING_DIR
@@ -77,22 +58,21 @@ def stage_file_updates(root: Path, file_updates: list[dict[str, str]]) -> list[d
         # Use hash-based staging name to avoid collisions
         staged_name = f"stage-{i:04d}-{_sha256_bytes(content.encode('utf-8'))[:12]}.tmp"
         staged_path = staging_root / staged_name
-        staged_path.write_text(content, encoding="utf-8")
-        staged.append({
-            "final_path": final_path,
-            "staged_path": str(staged_path),
-            "content": content,
-            "final_abs_path": item.get("_esaa_final_abs_path"),
-            "effect_scope": item.get("_esaa_effect_scope", "workspace"),
-            "source_path": item.get("_esaa_source_path", final_path),
-            "target": item.get("_esaa_target"),
-            "target_root": item.get("_esaa_target_root"),
-            "target_path": item.get("_esaa_target_path"),
-        })
+        staged_path.write_text(content, encoding="utf-8", newline="")
+        staged.append(
+            {
+                "final_path": final_path,
+                "staged_path": str(staged_path),
+                "content": content,
+                "final_abs_path": item.get("_esaa_final_abs_path"),
+                "effect_scope": item.get("_esaa_effect_scope", "workspace"),
+                "source_path": item.get("_esaa_source_path", final_path),
+                "target": item.get("_esaa_target"),
+                "target_root": item.get("_esaa_target_root"),
+                "target_path": item.get("_esaa_target_path"),
+            }
+        )
     return staged
-
-
-
 
 
 def commit_staged(root: Path, staged: list[dict[str, Any]]) -> None:
@@ -104,10 +84,7 @@ def commit_staged(root: Path, staged: list[dict[str, Any]]) -> None:
         os.replace(staged_p, final)
 
 
-
-
 def discard_staged(staged: list[dict[str, Any]]) -> None:
-
     """Cleanup staged files on failure."""
 
     for entry in staged:
@@ -121,11 +98,7 @@ def discard_staged(staged: list[dict[str, Any]]) -> None:
             pass
 
 
-
-
-
 def cleanup_orphan_staging(root: Path) -> int:
-
     """Remove arquivos staged abandonados. Returns count removed."""
 
     staging_root = root / STAGING_DIR
@@ -151,15 +124,14 @@ def cleanup_orphan_staging(root: Path) -> int:
     return n
 
 
-
-
-
-def compute_file_metadata(root: Path, path: str, after_content: str,
-
-                          encoding: str = "utf-8",
-                          final_abs_path: str | None = None,
-                          extra: dict[str, Any] | None = None) -> dict[str, Any]:
-
+def compute_file_metadata(
+    root: Path,
+    path: str,
+    after_content: str,
+    encoding: str = "utf-8",
+    final_abs_path: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Computa metadados de auditoria para um file_update."""
 
     final = Path(final_abs_path) if final_abs_path else root / path
@@ -177,17 +149,11 @@ def compute_file_metadata(root: Path, path: str, after_content: str,
     after_bytes = after_content.encode(encoding)
 
     meta = {
-
         "path": path,
-
         "before_sha256": before_sha,
-
         "after_sha256": _sha256_bytes(after_bytes),
-
         "bytes": len(after_bytes),
-
         "encoding": encoding,
-
     }
     if final_abs_path:
         meta["absolute_path"] = str(final)
@@ -198,12 +164,8 @@ def compute_file_metadata(root: Path, path: str, after_content: str,
     return meta
 
 
-
-
-
 def _canonical_artifact_hash(payload: dict[str, Any]) -> str:
-
-    """Hash determinÃ­stico do payload SEM o prÃ³prio artifact_sha256."""
+    """Hash determinístico do payload SEM o próprio artifact_sha256."""
 
     p = {k: v for k, v in payload.items() if k != "artifact_sha256"}
 
@@ -212,11 +174,7 @@ def _canonical_artifact_hash(payload: dict[str, Any]) -> str:
     return _sha256_bytes(canon.encode("utf-8"))
 
 
-
-
-
 def write_artifact(root: Path, metadata: dict[str, Any], content: str) -> dict[str, Any]:
-
     """Grava artifact content-addressed e devolve metadata atualizada com
 
     artifact_sha256 e artifact_path."""
@@ -226,11 +184,13 @@ def write_artifact(root: Path, metadata: dict[str, Any], content: str) -> dict[s
     artifact_root.mkdir(parents=True, exist_ok=True)
 
     payload = dict(metadata)
-    payload.update({
-        "artifact_id": f"ART-{metadata['after_sha256']}",
-        "content": content,
-        "ts": _utc_now_iso(),
-    })
+    payload.update(
+        {
+            "artifact_id": f"ART-{metadata['after_sha256']}",
+            "content": content,
+            "ts": _utc_now_iso(),
+        }
+    )
 
     artifact_sha = _canonical_artifact_hash(payload)
 
@@ -243,11 +203,8 @@ def write_artifact(root: Path, metadata: dict[str, Any], content: str) -> dict[s
     if not artifact_path.exists():
 
         artifact_path.write_text(
-
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-
             encoding="utf-8",
-
         )
 
     out = dict(metadata)
@@ -259,11 +216,7 @@ def write_artifact(root: Path, metadata: dict[str, Any], content: str) -> dict[s
     return out
 
 
-
-
-
 def verify_artifact(root: Path, artifact_path: str) -> tuple[bool, str | None]:
-
     """Verifica que o artifact existe e tem hash consistente.
 
     Returns (ok, error_code|None).
@@ -369,10 +322,9 @@ def recover_file_effects(root: Path, events: list[dict[str, Any]], dry_run: bool
     }
 
 
-
-
-def stage_and_compute(root: Path, file_updates: list[dict[str, str]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-
+def stage_and_compute(
+    root: Path, file_updates: list[dict[str, str]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Atomico: stage + compute metadata + write_artifact em uma chamada.
 
     Returns (staged_list, metadata_list).
@@ -405,4 +357,3 @@ def stage_and_compute(root: Path, file_updates: list[dict[str, str]]) -> tuple[l
         metadata_list.append(meta)
 
     return staged, metadata_list
-

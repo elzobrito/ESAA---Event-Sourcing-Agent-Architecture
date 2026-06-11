@@ -4,7 +4,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from .projector import materialize
-
+from .store import snapshot_concurrency_metrics
 
 ERROR_CODE_TO_GATE = {
     "MISSING_CLAIM": "WG-001",
@@ -34,7 +34,9 @@ def _event_metrics(payload: dict[str, Any]) -> dict[str, int]:
         "input_tokens": _optional_int(usage.get("input_tokens", metrics.get("input_tokens", 0))),
         "output_tokens": _optional_int(usage.get("output_tokens", metrics.get("output_tokens", 0))),
     }
-    out["total_tokens"] = _optional_int(usage.get("total_tokens", metrics.get("total_tokens", payload.get("total_tokens"))))
+    out["total_tokens"] = _optional_int(
+        usage.get("total_tokens", metrics.get("total_tokens", payload.get("total_tokens")))
+    )
     if out["total_tokens"] == 0:
         out["total_tokens"] = out["input_tokens"] + out["output_tokens"]
     return out
@@ -103,6 +105,8 @@ def compute_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
 
     total = len(events)
     rejected = sum(rejected_by_code.values())
+    concurrency = snapshot_concurrency_metrics()
+
     return {
         "events_total": total,
         "events_by_action": _sorted_dict(events_by_action),
@@ -125,6 +129,7 @@ def compute_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
             "by_status": _sorted_dict(runner_by_status),
             "errors_by_code": _sorted_dict(runner_errors_by_code),
         },
+        "concurrency": concurrency,
         "tasks": {"done": tasks_done, "total": tasks_total},
         "run_status": run_status,
         "projection_hash_sha256": projection_hash,

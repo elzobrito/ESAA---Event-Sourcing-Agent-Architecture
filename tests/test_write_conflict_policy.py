@@ -64,9 +64,27 @@ def test_conflict_helpers_detect_exact_and_directory_prefix() -> None:
 
 def test_parallel_groups_separate_planned_write_conflicts(contract_bundle: Path) -> None:
     tasks = [
-        {"task_id": "P-1", "task_kind": "spec", "title": "P1", "depends_on": [], "outputs": {"files": ["docs/spec/same.md"]}},
-        {"task_id": "P-2", "task_kind": "spec", "title": "P2", "depends_on": [], "outputs": {"files": ["docs/spec/same.md"]}},
-        {"task_id": "P-3", "task_kind": "spec", "title": "P3", "depends_on": [], "outputs": {"files": ["docs/qa/other.md"]}},
+        {
+            "task_id": "P-1",
+            "task_kind": "spec",
+            "title": "P1",
+            "depends_on": [],
+            "outputs": {"files": ["docs/spec/same.md"]},
+        },
+        {
+            "task_id": "P-2",
+            "task_kind": "spec",
+            "title": "P2",
+            "depends_on": [],
+            "outputs": {"files": ["docs/spec/same.md"]},
+        },
+        {
+            "task_id": "P-3",
+            "task_kind": "spec",
+            "title": "P3",
+            "depends_on": [],
+            "outputs": {"files": ["docs/qa/other.md"]},
+        },
     ]
 
     assert parallel_groups(tasks) == [["P-1", "P-3"], ["P-2"]]
@@ -76,8 +94,20 @@ def test_parallel_complete_write_conflict_rejects_without_second_side_effect(con
     _write_plugin(
         contract_bundle,
         [
-            {"task_id": "P-1", "task_kind": "spec", "title": "P1", "depends_on": [], "outputs": {"files": ["docs/spec/p1.md"]}},
-            {"task_id": "P-2", "task_kind": "spec", "title": "P2", "depends_on": [], "outputs": {"files": ["docs/spec/p2.md"]}},
+            {
+                "task_id": "P-1",
+                "task_kind": "spec",
+                "title": "P1",
+                "depends_on": [],
+                "outputs": {"files": ["docs/spec/p1.md"]},
+            },
+            {
+                "task_id": "P-2",
+                "task_kind": "spec",
+                "title": "P2",
+                "depends_on": [],
+                "outputs": {"files": ["docs/spec/p2.md"]},
+            },
         ],
     )
     service = ESAAService(contract_bundle, adapter=SharedWriteAdapter())
@@ -93,3 +123,34 @@ def test_parallel_complete_write_conflict_rejects_without_second_side_effect(con
     assert rejected[-1]["payload"]["error_code"] == "WRITE_CONFLICT"
     assert service.verify()["verify_status"] == "ok"
 
+
+def test_single_run_cross_iteration_write_conflict_rejects_second_write(contract_bundle: Path) -> None:
+    _write_plugin(
+        contract_bundle,
+        [
+            {
+                "task_id": "P-1",
+                "task_kind": "spec",
+                "title": "P1",
+                "depends_on": [],
+                "outputs": {"files": ["docs/spec/p1.md"]},
+            },
+            {
+                "task_id": "P-2",
+                "task_kind": "spec",
+                "title": "P2",
+                "depends_on": ["P-1"],
+                "outputs": {"files": ["docs/spec/p2.md"]},
+            },
+        ],
+    )
+    service = ESAAService(contract_bundle, adapter=SharedWriteAdapter())
+    service.init(force=True)
+
+    result = service.run(steps=None, parallel=1)
+
+    assert (contract_bundle / "docs/spec/shared.md").read_text(encoding="utf-8") == "P-1"
+    rejected = [event for event in parse_event_store(contract_bundle) if event["action"] == "output.rejected"]
+    assert any(event["payload"]["error_code"] == "WRITE_CONFLICT" for event in rejected)
+    assert result["rejected"] >= 1
+    assert service.verify()["verify_status"] == "ok"

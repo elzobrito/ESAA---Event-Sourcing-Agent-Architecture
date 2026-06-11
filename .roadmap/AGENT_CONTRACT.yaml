@@ -112,6 +112,7 @@ output_contract:
       - task_id
       - prior_status        # NOVO v0.4.1 — obrigatório em todo output
     forbidden_fields:
+      - runner              # G08: proveniencia e carimbada pelo Orchestrator, nunca pelo agente
       - schema_version      # metadado de evento — exclusivo do Orchestrator
       - event_id            # gerado pelo Orchestrator
       - event_seq           # gerado pelo Orchestrator
@@ -152,6 +153,28 @@ output_contract:
     reject_code_on_violation: "MISSING_COMPLETE"
     derived_from: "LES-0002"
     schema_ref: "agent_result.schema.json#/allOf/0"
+    formats:
+      content:
+        required: ["path", "content"]
+        semantics: "conteúdo completo do arquivo, aplicado atomicamente pelo Orchestrator"
+      edits:
+        required: ["path", "base_sha256", "edits"]
+        edit_item_required: ["old_string", "new_string"]
+        optional: ["replace_all"]
+        semantics: >
+          O Orchestrator resolve edits determinísticamente antes de external effects,
+          resource limits, staging e artifacts. O downstream continua recebendo
+          apenas o formato completo {path, content}.
+          base_sha256 é validado contra o conteúdo commitado em disco;
+          dentro de um mesmo run(), a segunda escrita no mesmo path é
+          rejeitada com WRITE_CONFLICT. old_string casa contra o texto
+          UTF-8 decodificado com os newlines exatos do arquivo (CRLF
+          incluído); arquivo não-UTF-8 é rejeitado com EDIT_INVALID.
+        reject_codes:
+          EDIT_BASE_MISMATCH: "arquivo ausente ou sha256 atual diferente de base_sha256"
+          EDIT_TARGET_NOT_FOUND: "old_string não encontrado no texto progressivo"
+          EDIT_AMBIGUOUS: "old_string casa mais de uma vez sem replace_all=true"
+          EDIT_INVALID: "shape estrutural inválida, runtime://, hash malformado ou arquivo não UTF-8"
 
 # ---------------------------------------------------------------------------
 # boundaries

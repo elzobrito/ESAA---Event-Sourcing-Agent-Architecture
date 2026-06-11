@@ -7,15 +7,17 @@ Le RUNTIME_POLICY.yaml e consulta o event store para decidir:
 
 Sem estado em memoria: tudo derivavel do event store (event-sourced).
 """
+
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from .errors import ESAAError
 
 DEFAULT_POLICY = {
     "attempt_lifecycle": {"ttl": "PT30M"},
@@ -118,6 +120,32 @@ def resolve_role(actor: str, root: Path | None = None) -> str:
     if actor.startswith("agent-orchestrator") or actor == "orchestrator":
         return "orchestrator"
     return "agent"
+
+
+def runner_validation_mode(policy: dict[str, Any]) -> str:
+    """G08/PROV-02: permissive (default) ou strict."""
+    return str(policy.get("runner_validation", "permissive"))
+
+
+def known_runners(root: Path) -> set[str]:
+    """Runners registrados na secao `runners:` de agents_swarm.yaml."""
+    swarm_path = root / ".roadmap" / "agents_swarm.yaml"
+    if not swarm_path.exists():
+        return set()
+    try:
+        data = yaml.safe_load(swarm_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return set()
+    runners = data.get("runners", {}) or {}
+    return {str(k) for k in runners} if isinstance(runners, dict) else set()
+
+
+def validate_runner_id(runner_id: str, root: Path, policy: dict[str, Any]) -> None:
+    """Em modo strict, runner_id deve estar registrado no swarm."""
+    if runner_validation_mode(policy) != "strict":
+        return
+    if runner_id not in known_runners(root):
+        raise ESAAError("RUNNER_UNKNOWN", f"runner not registered in agents_swarm.yaml: {runner_id}")
 
 
 def review_authorization_mode(policy: dict[str, Any]) -> str:

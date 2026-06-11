@@ -37,6 +37,8 @@ def _new_task(payload: dict[str, Any]) -> dict[str, Any]:
         for field in ("issue_id", "fixes", "scope_patch", "required_verification", "baseline_id"):
             if field in payload:
                 task[field] = deepcopy(payload[field])
+    if payload.get("boundary_grant"):
+        task["boundary_grant"] = deepcopy(payload["boundary_grant"])
     if payload.get("plugin"):
         task["plugin"] = deepcopy(payload["plugin"])
     return task
@@ -134,7 +136,7 @@ def _apply_review(state: dict[str, Any], event: dict[str, Any]) -> None:
     _check_transition(task, "review")
     # FIX-1807: review autoriza-se por owner (legado) ou por role qa/orchestrator.
     # O service injeta '_reviewer_role' no payload apos resolver runtime_policy.
-    reviewer_role = event["payload"].get("_reviewer_role")
+    reviewer_role = event.get("reviewer_role") or event["payload"].get("_reviewer_role")
     if reviewer_role not in {"qa", "orchestrator"}:
         _ensure_owner(task, event["actor"])
     if decision == "approve":
@@ -250,15 +252,16 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
     elif action == "verify.fail":
         state["meta"]["run"]["verify_status"] = payload.get("verify_status", "mismatch")
     elif action == "orchestrator.view.mutate":
-        # R1-fix: um view.mutate pode registrar lessons de forma reconstruível
-        # por replay. Quando o payload carrega 'lessons', a projeção passa a
-        # derivá-las do event store (e não de edição manual do read model).
+        # R1-fix: um view.mutate pode registrar lessons de forma reconstruivel
+        # por replay. Quando o payload carrega 'lessons', a projecao passa a
+        # deriva-las do event store (e nao de edicao manual do read model).
         if isinstance(payload.get("lessons"), list):
             state["_lessons"] = deepcopy(payload["lessons"])
     elif action in {
         "output.rejected",
         "orchestrator.file.write",
         "runner.metrics",
+        "chain.anchor",
         "verify.start",
         "plugin.install",
         "plugin.remove",
@@ -276,7 +279,9 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
     state["meta"]["updated_at"] = event["ts"]
 
 
-def materialize(events: list[dict[str, Any]], project_name: str = "esaa-core") -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def materialize(
+    events: list[dict[str, Any]], project_name: str = "esaa-core"
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     state = _empty_state(project_name=project_name)
     for event in events:
         _apply_event(state, event)
@@ -290,7 +295,9 @@ def materialize(events: list[dict[str, Any]], project_name: str = "esaa-core") -
         "tasks": deepcopy(state["tasks"]),
         "indexes": deepcopy(state["indexes"]),
     }
-    roadmap["meta"]["run"]["verify_status"] = normalize_legacy_verify_status(roadmap["meta"]["run"]["verify_status"])
+    roadmap["meta"]["run"]["verify_status"] = normalize_legacy_verify_status(
+        roadmap["meta"]["run"]["verify_status"]
+    )
     roadmap["meta"]["run"]["projection_hash_sha256"] = compute_projection_hash(roadmap)
 
     issues = sorted(state["_issues"].values(), key=lambda issue: issue["issue_id"])

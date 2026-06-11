@@ -5,7 +5,6 @@ from typing import Any
 
 from .errors import ESAAError
 
-
 REQUIRED_FIELDS = ("task_id", "actor", "runner_id", "runner_kind", "command_surface", "status")
 STATUS_VALUES = {"success", "failed", "cancelled", "unknown"}
 
@@ -111,4 +110,3 @@ def normalize_runner_metrics(payload: dict[str, Any]) -> dict[str, Any]:
     if out["correlation_id"] is not None and not isinstance(out["correlation_id"], str):
         raise ESAAError("SCHEMA_INVALID", "correlation_id must be a string or null")
     return out
-

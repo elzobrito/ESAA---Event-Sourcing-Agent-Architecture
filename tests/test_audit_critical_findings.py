@@ -1,14 +1,12 @@
 """AUD-1814-QA — Critical findings audit coverage test."""
+
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))
-
-from src.audit.critical_findings import (
+from tools.audit.critical_findings import (
     CHECKS,
     check_baseline_lessons_reseed,
     check_done_in_prior_status,
@@ -19,8 +17,11 @@ from src.audit.critical_findings import (
     check_review_role,
     check_runner_metrics,
     check_serializable_append,
+    main,
     run_checks,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_all_checks_pass_against_repo():
@@ -30,8 +31,8 @@ def test_all_checks_pass_against_repo():
     drift no engine ou nos contratos.
     """
     result = run_checks(REPO_ROOT)
-    assert result["total_findings"] == 0, (
-        "findings esperados=[]; got=" + json.dumps(result["findings"], indent=2)
+    assert result["total_findings"] == 0, "findings esperados=[]; got=" + json.dumps(
+        result["findings"], indent=2
     )
 
 
@@ -74,3 +75,19 @@ def test_dry_run_semantics_check_returns_empty():
 def test_checks_registry_size():
     """Garante que todos os checkers criticos estao registrados."""
     assert len(CHECKS) == 9
+
+
+def test_main_returns_zero_against_repo(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["critical_findings.py", "--root", str(REPO_ROOT)])
+
+    assert main() == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_findings"] == 0
+
+
+def test_main_returns_one_when_findings_exist(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["critical_findings.py", "--root", str(tmp_path)])
+
+    assert main() == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_findings"] > 0

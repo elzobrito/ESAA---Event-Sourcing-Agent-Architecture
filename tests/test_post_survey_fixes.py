@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import esaa.service as service_module
+import esaa.submission as submission_module
 from esaa.errors import ESAAError
 from esaa.service import ESAAService
 from esaa.store import parse_event_store
@@ -81,7 +81,7 @@ def test_file_effect_can_recover_after_final_commit_failure(
     def fail_commit(_root: Path, _staged: list[dict]) -> None:
         raise RuntimeError("simulated final file failure")
 
-    monkeypatch.setattr(service_module, "commit_staged", fail_commit)
+    monkeypatch.setattr(submission_module, "commit_staged", fail_commit)
     with pytest.raises(RuntimeError, match="simulated final file failure"):
         svc.submit(
             {
@@ -134,7 +134,9 @@ def test_issue_report_command_preserves_done_prior_status(contract_bundle: Path)
         repro_steps=["inspect done task"],
     )
 
-    issue_event = [event for event in parse_event_store(contract_bundle) if event["action"] == "issue.report"][-1]
+    issue_event = [
+        event for event in parse_event_store(contract_bundle) if event["action"] == "issue.report"
+    ][-1]
     assert issue_event["payload"]["prior_status"] == "done"
     assert svc.task_state("T-1000")["task"]["status"] == "done"
 
@@ -203,8 +205,7 @@ def test_run_consumes_late_plugin_task(tmp_path: Path, repo_root: Path) -> None:
         for event in events
     )
     assert any(
-        event["action"] == "claim" and event["payload"].get("task_id") == "PLG-LATE-1"
-        for event in events
+        event["action"] == "claim" and event["payload"].get("task_id") == "PLG-LATE-1" for event in events
     )
 
 

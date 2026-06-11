@@ -98,7 +98,9 @@ def compact_event_store(root: Path, before: int, dry_run: bool = True) -> dict[s
     full_projection_hash = _verify_projection_ok(root, events)
     last_verify_ok = _last_verify_ok_seq(events)
     if before > last_verify_ok:
-        raise ESAAError("SNAPSHOT_BEFORE_UNVERIFIED", f"before={before} is above last verify.ok seq={last_verify_ok}")
+        raise ESAAError(
+            "SNAPSHOT_BEFORE_UNVERIFIED", f"before={before} is above last verify.ok seq={last_verify_ok}"
+        )
 
     selected = [event for event in events if int(event["event_seq"]) <= before]
     tail = [event for event in events if int(event["event_seq"]) > before]

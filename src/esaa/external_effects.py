@@ -7,10 +7,36 @@ from typing import Any
 
 from .errors import ESAAError
 from .plugins import _plugin_dir_from_lock, _read_json, _read_plugins_lock, _read_roadmaps_lock
+from .runtime_policy import load_policy
 from .utils import normalize_rel_path
 
-
 DEFAULT_RUNTIME_PREFIXES = ["runtime://outputs."]
+DANGEROUS_ALLOWED_WRITE = {"**", "**/*"}
+
+
+def _external_policy(root: Path) -> dict[str, Any] | None:
+    value = load_policy(root).get("external_effects")
+    return value if isinstance(value, dict) else None
+
+
+def _policy_bool(policy: dict[str, Any] | None, key: str, default: bool) -> bool:
+    if policy is None:
+        return default
+    return bool(policy.get(key, default))
+
+
+def _dangerous_allowed_write(pattern: str) -> bool:
+    return pattern.replace("\\", "/").strip() in DANGEROUS_ALLOWED_WRITE
+
+
+def _validate_allowed_write_patterns(patterns: list[str], allow_wildcard: bool, label: str) -> None:
+    if allow_wildcard:
+        return
+    for pattern in patterns:
+        if _dangerous_allowed_write(pattern):
+            raise ESAAError(
+                "PLUGIN_SCHEMA_INVALID", f"dangerous allowed_write wildcard requires policy opt-in: {label}"
+            )
 
 
 def _matches_any(path: str, patterns: list[str]) -> bool:
@@ -25,6 +51,41 @@ def _task_external_specs(task: dict[str, Any]) -> list[dict[str, Any]]:
 
 def task_accepts_external_path(task: dict[str, Any], path: str) -> bool:
     return any(spec.get("path") == path for spec in _task_external_specs(task))
+
+
+def _projected_task(root: Path, task_id: str) -> dict[str, Any] | None:
+    roadmap_path = root / ".roadmap" / "roadmap.json"
+    try:
+        payload = json.loads(roadmap_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    for task in payload.get("tasks", []) or []:
+        if isinstance(task, dict) and task.get("task_id") == task_id:
+            return task
+    return None
+
+
+def _scope_allows(scope_patch: list[Any], path: str) -> bool:
+    return any(path.startswith(str(prefix)) for prefix in scope_patch)
+
+
+def _external_specs_with_context(
+    root: Path, task: dict[str, Any]
+) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+    specs: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {
+        spec["path"]: (spec, task) for spec in _task_external_specs(task) if isinstance(spec.get("path"), str)
+    }
+
+    if task.get("is_hotfix"):
+        fixed_task_id = task.get("fixes")
+        fixed_task = _projected_task(root, fixed_task_id) if isinstance(fixed_task_id, str) else None
+        scope_patch = task.get("scope_patch", []) or []
+        if fixed_task:
+            for spec in _task_external_specs(fixed_task):
+                path = spec.get("path")
+                if isinstance(path, str) and _scope_allows(scope_patch, path):
+                    specs[path] = (spec, fixed_task)
+    return specs
 
 
 def _installed_plugin(root: Path, plugin_id: str) -> dict[str, Any]:
@@ -48,7 +109,7 @@ def _active_roadmap_entry(root: Path, plugin_id: str, execution_id: str) -> dict
 def _runtime_parts(uri: str, prefixes: list[str]) -> tuple[str, str]:
     for prefix in prefixes:
         if uri.startswith(prefix):
-            suffix = uri[len(prefix):]
+            suffix = uri[len(prefix) :]
             parts = [part for part in suffix.split(".") if part]
             if not parts:
                 raise ESAAError("PLUGIN_PATH_INVALID", f"runtime uri has no key: {uri}")
@@ -85,12 +146,46 @@ def _resolve_under_root(root: Path, rel_path: str, label: str) -> Path:
     return resolved
 
 
-def _target_root(workspace: Path, input_payload: dict[str, Any], root_input: str) -> Path:
+def _allowed_external_roots(workspace: Path, policy: dict[str, Any] | None) -> list[Path]:
+    if policy is None:
+        return []
+    roots = policy.get("allowed_roots", []) or []
+    if not isinstance(roots, list):
+        raise ESAAError("PLUGIN_SCHEMA_INVALID", "external_effects.allowed_roots must be a list")
+    out: list[Path] = []
+    for entry in roots:
+        if not isinstance(entry, str) or not entry.strip():
+            continue
+        raw = Path(entry)
+        out.append((raw if raw.is_absolute() else workspace / raw).resolve())
+    return out
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _target_root(
+    workspace: Path,
+    input_payload: dict[str, Any],
+    root_input: str,
+    policy: dict[str, Any] | None = None,
+) -> Path:
     value = input_payload.get(root_input)
     if not isinstance(value, str) or not value.strip():
         raise ESAAError("PLUGIN_INPUT_INVALID", f"missing external target root input: {root_input}")
     raw = Path(value)
-    return (raw if raw.is_absolute() else workspace / raw).resolve()
+    resolved = (raw if raw.is_absolute() else workspace / raw).resolve()
+    if policy is None:
+        return resolved
+    allowed_roots = _allowed_external_roots(workspace, policy)
+    if not allowed_roots or not any(_is_relative_to(resolved, allowed) for allowed in allowed_roots):
+        raise ESAAError("EXTERNAL_ROOT_NOT_ALLOWED", f"external target root is not allowed: {resolved}")
+    return resolved
 
 
 def _target_config(manifest: dict[str, Any], target_id: str) -> dict[str, Any]:
@@ -109,7 +204,9 @@ def _runtime_prefixes(target: dict[str, Any]) -> list[str]:
     return [str(value) for value in values]
 
 
-def _load_external_context(root: Path, task: dict[str, Any], target_id: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def _load_external_context(
+    root: Path, task: dict[str, Any], target_id: str
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     plugin_info = task.get("plugin") or {}
     plugin_id = plugin_info.get("id")
     execution_id = plugin_info.get("execution_id", "default")
@@ -134,7 +231,9 @@ def _runtime_contract(root: Path, target: dict[str, Any]) -> dict[str, Any]:
     contract_rel = target.get("runtime_contract")
     if not isinstance(contract_rel, str) or not contract_rel.strip():
         raise ESAAError("PLUGIN_SCHEMA_INVALID", "external target requires runtime_contract")
-    contract_path = _resolve_under_root(root, _safe_relative_path(contract_rel, "runtime_contract"), "runtime_contract")
+    contract_path = _resolve_under_root(
+        root, _safe_relative_path(contract_rel, "runtime_contract"), "runtime_contract"
+    )
     try:
         payload = json.loads(contract_path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
@@ -154,20 +253,23 @@ def resolve_external_file_updates(
     if not file_updates:
         return []
 
-    external_by_path = {spec["path"]: spec for spec in _task_external_specs(task) if "path" in spec}
+    external_by_path = _external_specs_with_context(root, task)
+    external_policy = _external_policy(root)
+    allow_wildcard = _policy_bool(external_policy, "allow_glob_wildcard", False)
     resolved: list[dict[str, Any]] = []
     for item in file_updates:
         path = item["path"]
-        spec = external_by_path.get(path)
-        if not spec:
+        entry = external_by_path.get(path)
+        if not entry:
             resolved.append(dict(item))
             continue
+        spec, context_task = entry
 
-        target_id = spec.get("target") or (task.get("outputs") or {}).get("target")
+        target_id = spec.get("target") or (context_task.get("outputs") or {}).get("target")
         if not isinstance(target_id, str) or not target_id:
             raise ESAAError("PLUGIN_SCHEMA_INVALID", f"external file missing target: {path}")
 
-        _, target, input_payload = _load_external_context(root, task, target_id)
+        _, target, input_payload = _load_external_context(root, context_task, target_id)
         prefixes = _runtime_prefixes(target)
         namespace, key = _runtime_parts(path, prefixes)
         contract = _runtime_contract(root, target)
@@ -177,24 +279,29 @@ def resolve_external_file_updates(
 
         target_path = _safe_relative_path(relative_value, path)
         allowed = [str(pattern) for pattern in target.get("allowed_write", [])]
+        _validate_allowed_write_patterns(allowed, allow_wildcard, f"external target {target_id}")
         if not allowed or not _matches_any(target_path, allowed):
-            raise ESAAError("BOUNDARY_VIOLATION", f"path not allowed for external target {target_id}: {target_path}")
+            raise ESAAError(
+                "BOUNDARY_VIOLATION", f"path not allowed for external target {target_id}: {target_path}"
+            )
 
         root_input = target.get("root_input")
         if not isinstance(root_input, str) or not root_input:
             raise ESAAError("PLUGIN_SCHEMA_INVALID", f"external target missing root_input: {target_id}")
-        target_root = _target_root(root, input_payload, root_input)
+        target_root = _target_root(root, input_payload, root_input, external_policy)
         absolute_path = _resolve_under_root(target_root, target_path, path)
 
         out = dict(item)
-        out.update({
-            "path": path,
-            "_esaa_effect_scope": "external",
-            "_esaa_source_path": path,
-            "_esaa_target": target_id,
-            "_esaa_target_root": str(target_root),
-            "_esaa_target_path": target_path,
-            "_esaa_final_abs_path": str(absolute_path),
-        })
+        out.update(
+            {
+                "path": path,
+                "_esaa_effect_scope": "external",
+                "_esaa_source_path": path,
+                "_esaa_target": target_id,
+                "_esaa_target_root": str(target_root),
+                "_esaa_target_path": target_path,
+                "_esaa_final_abs_path": str(absolute_path),
+            }
+        )
         resolved.append(out)
     return resolved

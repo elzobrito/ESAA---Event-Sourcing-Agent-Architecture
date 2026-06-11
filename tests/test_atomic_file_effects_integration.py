@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import esaa.service as service_module
+import esaa.service_core as service_core_module
 from esaa.errors import ESAAError
 from esaa.file_effects import STAGING_DIR, verify_artifact
 from esaa.service import ESAAService
@@ -46,8 +46,8 @@ def test_submit_does_not_write_final_file_when_append_fails(
         actor="agent-spec",
     )
 
-    monkeypatch.setattr(service_module, "append_events", _raise_append_failure)
-    monkeypatch.setattr(service_module, "append_transactional", _raise_append_failure, raising=False)
+    monkeypatch.setattr(service_core_module, "append_events", _raise_append_failure)
+    monkeypatch.setattr(service_core_module, "append_transactional", _raise_append_failure, raising=False)
 
     with pytest.raises(ESAAError) as exc:
         svc.submit(_complete_output(), actor="agent-spec")
@@ -65,8 +65,8 @@ def test_run_does_not_write_final_file_when_append_fails(
     svc.init(force=True)
     svc.run(steps=1)
 
-    monkeypatch.setattr(service_module, "append_events", _raise_append_failure)
-    monkeypatch.setattr(service_module, "append_transactional", _raise_append_failure, raising=False)
+    monkeypatch.setattr(service_core_module, "append_events", _raise_append_failure)
+    monkeypatch.setattr(service_core_module, "append_transactional", _raise_append_failure, raising=False)
 
     with pytest.raises(ESAAError) as exc:
         svc.run(steps=1)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FIX-1521 — Rename PARCER_PROFILE_agent-docs.yaml para PARCER_PROFILE.agent-docs.yaml.
+"""FIX-1521 â€” Rename PARCER_PROFILE_agent-docs.yaml para PARCER_PROFILE.agent-docs.yaml.
 
 Adota convencao '.' (4 dos 5 profiles ja usam). Atualiza referencias textuais
 em CLAUDE.md e AGENTS.md. O evento 7 do event store permanece imutavel com o
@@ -7,6 +7,7 @@ nome antigo (registro historico valido).
 
 Uso: python src/audit/rename_parcer.py --root <repo_root>
 """
+
 from __future__ import annotations
 import argparse, re, shutil
 from pathlib import Path

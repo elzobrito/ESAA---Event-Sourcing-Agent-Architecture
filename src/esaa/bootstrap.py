@@ -6,7 +6,6 @@ from typing import Any
 
 from .errors import ESAAError
 
-
 GOVERNANCE_TEMPLATE_FILES = (
     "AGENT_CONTRACT.yaml",
     "ORCHESTRATOR_CONTRACT.yaml",
@@ -70,8 +69,7 @@ def bootstrap_workspace(root: Path, profile: str = "public", force: bool = False
     roadmap_dir.mkdir(parents=True, exist_ok=True)
 
     governance_targets = [
-        (f".roadmap/{name}", roadmap_dir / name, "governance", name)
-        for name in GOVERNANCE_TEMPLATE_FILES
+        (f".roadmap/{name}", roadmap_dir / name, "governance", name) for name in GOVERNANCE_TEMPLATE_FILES
     ]
     guide_targets = [
         (target_rel, root / target_rel, "workspace", source_name)
