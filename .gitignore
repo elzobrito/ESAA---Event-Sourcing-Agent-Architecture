@@ -12,6 +12,7 @@ htmlcov/
 
 # Packaging/build
 build/
+dist/
 *.egg-info/
 .eggs/
 *.egg
@@ -28,12 +29,14 @@ env/
 .DS_Store
 Thumbs.db
 .claude/settings.local.json
+.codex-remote-attachments/
 
-# ESAA transient backups/locks
-./roadmap/artifacts/file-effects/
-./roadmap/artifacts/
+# ESAA transient backups/locks (QUA-03: typo de prefixo corrigido)
+.roadmap/artifacts/file-effects/
+.roadmap/artifacts/
 .roadmap/backups/
 .roadmap.backup*/
+.roadmap/staging/
 *.lock
 
 # Generated snapshot/compaction artifacts
@@ -43,5 +46,4 @@ Thumbs.db
 .roadmap/snapshots/seq-*.manifest.json
 
 # Optional ESAA inbox processed files
-.roadmap/inbox/done/
-.roadmap/inbox/rejected/
+.roadmap/inbox/

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import esaa.service as service_module
+import esaa.service_core as service_core_module
 from esaa.errors import ESAAError
 from esaa.service import ESAAService
 from esaa.store import parse_event_store
@@ -20,7 +20,7 @@ def test_submit_claim_uses_serializable_transaction(
 ) -> None:
     svc = ESAAService(contract_bundle)
     svc.init(force=True)
-    monkeypatch.setattr(service_module, "append_events", _forbid_append_events)
+    monkeypatch.setattr(service_core_module, "append_events", _forbid_append_events)
 
     result = svc.submit(
         {"activity_event": {"action": "claim", "task_id": "T-1000", "prior_status": "todo"}},
@@ -39,7 +39,7 @@ def test_run_claim_uses_serializable_transaction(
 ) -> None:
     svc = ESAAService(contract_bundle)
     svc.init(force=True)
-    monkeypatch.setattr(service_module, "append_events", _forbid_append_events)
+    monkeypatch.setattr(service_core_module, "append_events", _forbid_append_events)
 
     result = svc.run(steps=1)
 
@@ -55,7 +55,7 @@ def test_orchestrator_command_uses_serializable_transaction(
 ) -> None:
     svc = ESAAService(contract_bundle)
     svc.init(force=True)
-    monkeypatch.setattr(service_module, "append_events", _forbid_append_events)
+    monkeypatch.setattr(service_core_module, "append_events", _forbid_append_events)
 
     result = svc.create_task(
         "TX-1",

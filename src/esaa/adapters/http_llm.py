@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from ..errors import ESAAError
 from .base import AgentAdapter
 
 
@@ -16,11 +17,13 @@ class HttpLlmAdapter(AgentAdapter):
         agent_id: str = "agent-http",
         token: str | None = None,
         timeout: float = 30.0,
+        max_response_bytes: int = 4 * 1024 * 1024,
     ) -> None:
         self.url = url
         self.agent_id = agent_id
         self.token = token
         self.timeout = timeout
+        self.max_response_bytes = int(max_response_bytes)
 
     @classmethod
     def from_env(cls) -> "HttpLlmAdapter":
@@ -32,6 +35,7 @@ class HttpLlmAdapter(AgentAdapter):
             agent_id=os.environ.get("ESAA_LLM_AGENT_ID", "agent-http"),
             token=os.environ.get("ESAA_LLM_TOKEN"),
             timeout=float(os.environ.get("ESAA_LLM_TIMEOUT", "30")),
+            max_response_bytes=int(os.environ.get("ESAA_LLM_MAX_RESPONSE_BYTES", str(4 * 1024 * 1024))),
         )
 
     def health(self) -> dict[str, str]:
@@ -50,7 +54,13 @@ class HttpLlmAdapter(AgentAdapter):
 
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                payload = json.loads(response.read().decode("utf-8"))
+                raw = response.read(self.max_response_bytes + 1)
+                if len(raw) > self.max_response_bytes:
+                    raise ESAAError(
+                        "RESOURCE_LIMIT_EXCEEDED",
+                        f"adapter response exceeds max_adapter_response_bytes={self.max_response_bytes}",
+                    )
+                payload = json.loads(raw.decode("utf-8"))
         except urllib.error.URLError as exc:
             raise ValueError(f"HTTP LLM adapter request failed: {exc}") from exc
         except json.JSONDecodeError as exc:

@@ -283,6 +283,15 @@
           },
           "minItems": 1
         },
+        "boundary_grant": {
+          "$comment": "T-2070: padroes fnmatch de escrita extras concedidos pelo operador via task.create, validos apenas para esta task.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
         "required_verification": {
           "type": "array",
           "items": {

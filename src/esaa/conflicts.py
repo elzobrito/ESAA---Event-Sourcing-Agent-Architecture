@@ -42,4 +42,3 @@ def explain_conflict(left: Iterable[str], right: Iterable[str]) -> dict[str, Any
 
 def conflict_between_sets(left: Iterable[str], right: Iterable[str]) -> bool:
     return bool(explain_conflict(left, right)["conflict"])
-

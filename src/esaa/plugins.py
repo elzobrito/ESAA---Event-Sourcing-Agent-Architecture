@@ -21,6 +21,7 @@ _KEBAB_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _LOCAL_TASK_RE = re.compile(r"^[A-Za-z0-9]+(?:[-_.][A-Za-z0-9]+)*$")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 _WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[\\/]")
+_DANGEROUS_ALLOWED_WRITE = {"**", "**/*"}
 
 
 def _roadmap_dir(root: Path) -> Path:
@@ -107,6 +108,17 @@ def _validate_output_path(value: str, label: str) -> str:
     return normalized
 
 
+def _validate_glob_pattern(value: str, label: str) -> str:
+    normalized = _validate_relative_path(value, label)
+    if normalized.startswith("runtime://"):
+        raise ESAAError("PLUGIN_PATH_INVALID", f"{label} must be a relative glob pattern: {value}")
+    if normalized in _DANGEROUS_ALLOWED_WRITE:
+        raise ESAAError(
+            "PLUGIN_SCHEMA_INVALID", f"{label} uses dangerous wildcard without policy opt-in: {value}"
+        )
+    return normalized
+
+
 def _resolve_workspace_file(root: Path, path_arg: str, label: str) -> tuple[Path, str]:
     normalized = _validate_relative_path(path_arg, label)
     candidate = Path(normalized)
@@ -183,7 +195,9 @@ def _hash_dir(path: Path) -> str:
 
 
 def _plugin_schema(repo_root: Path | None = None) -> dict[str, Any] | None:
-    schema_path = (repo_root or _default_repo_root()) / "src" / "esaa" / "templates" / "esaa-plugin.schema.json"
+    schema_path = (
+        (repo_root or _default_repo_root()) / "src" / "esaa" / "templates" / "esaa-plugin.schema.json"
+    )
     if not schema_path.exists():
         return None
     return _read_json(schema_path)
@@ -192,7 +206,9 @@ def _plugin_schema(repo_root: Path | None = None) -> dict[str, Any] | None:
 def _validate_manifest_shape(manifest: dict[str, Any], repo_root: Path | None = None) -> None:
     schema = _plugin_schema(repo_root)
     if schema is not None:
-        errors = sorted(Draft202012Validator(schema).iter_errors(manifest), key=lambda error: list(error.path))
+        errors = sorted(
+            Draft202012Validator(schema).iter_errors(manifest), key=lambda error: list(error.path)
+        )
         if errors:
             error = errors[0]
             loc = "/".join(str(part) for part in error.path) or "<root>"
@@ -217,9 +233,21 @@ def validate_plugin_dir(plugin_dir: Path, repo_root: Path | None = None) -> dict
     if not _SEMVER_RE.match(manifest["version"]):
         raise ESAAError("PLUGIN_SCHEMA_INVALID", f"invalid plugin version: {manifest['version']}")
     if manifest.get("schema_version") != PLUGIN_SCHEMA:
-        raise ESAAError("PLUGIN_SCHEMA_INVALID", f"unsupported plugin schema: {manifest.get('schema_version')}")
+        raise ESAAError(
+            "PLUGIN_SCHEMA_INVALID", f"unsupported plugin schema: {manifest.get('schema_version')}"
+        )
     if manifest.get("kind") != "roadmap_plugin":
         raise ESAAError("PLUGIN_SCHEMA_INVALID", f"unsupported plugin kind: {manifest.get('kind')}")
+
+    external_target_ids: set[str] = set()
+    for idx, target in enumerate(manifest.get("external_targets", []) or []):
+        target_id = target["id"]
+        if target_id in external_target_ids:
+            raise ESAAError("PLUGIN_SCHEMA_INVALID", f"duplicate external target: {target_id}")
+        external_target_ids.add(target_id)
+        _validate_relative_path(target["runtime_contract"], f"external_targets[{idx}].runtime_contract")
+        for pattern_idx, pattern in enumerate(target.get("allowed_write", [])):
+            _validate_glob_pattern(pattern, f"external_targets[{idx}].allowed_write[{pattern_idx}]")
 
     forbidden = [
         ".roadmap/activity.jsonl",
@@ -257,8 +285,35 @@ def validate_plugin_dir(plugin_dir: Path, repo_root: Path | None = None) -> dict
             raise ESAAError("PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.files must be an array")
         for out_idx, output_path in enumerate(outputs["files"]):
             if not isinstance(output_path, str):
-                raise ESAAError("PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.files[{out_idx}] must be a string")
+                raise ESAAError(
+                    "PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.files[{out_idx}] must be a string"
+                )
             _validate_output_path(output_path, f"tasks[{idx}].outputs.files[{out_idx}]")
+        external_files = outputs.get("external_files", [])
+        if external_files:
+            if not isinstance(external_files, list):
+                raise ESAAError(
+                    "PLUGIN_ROADMAP_INVALID", f"tasks[{idx}].outputs.external_files must be an array"
+                )
+            for ext_idx, external in enumerate(external_files):
+                if not isinstance(external, dict):
+                    raise ESAAError(
+                        "PLUGIN_ROADMAP_INVALID",
+                        f"tasks[{idx}].outputs.external_files[{ext_idx}] must be an object",
+                    )
+                target_id = external.get("target") or outputs.get("target")
+                if target_id not in external_target_ids:
+                    raise ESAAError(
+                        "PLUGIN_ROADMAP_INVALID",
+                        f"tasks[{idx}].outputs.external_files[{ext_idx}] target is not declared",
+                    )
+                path = external.get("path")
+                if not isinstance(path, str):
+                    raise ESAAError(
+                        "PLUGIN_ROADMAP_INVALID",
+                        f"tasks[{idx}].outputs.external_files[{ext_idx}].path must be a string",
+                    )
+                _validate_output_path(path, f"tasks[{idx}].outputs.external_files[{ext_idx}].path")
         effective_task_id(plugin_id, "default", task["task_id"])
 
     input_schema = entrypoints.get("input_schema")
@@ -280,7 +335,9 @@ def validate_plugin_dir(plugin_dir: Path, repo_root: Path | None = None) -> dict
     }
 
 
-def _available_plugin_dirs(repo_root: Path | None = None, source_filter: str | None = None) -> list[tuple[str, Path]]:
+def _available_plugin_dirs(
+    repo_root: Path | None = None, source_filter: str | None = None
+) -> list[tuple[str, Path]]:
     out: list[tuple[str, Path]] = []
     bundled = _bundled_plugins_dir(repo_root)
     if source_filter in {None, "bundled"} and bundled.exists():
@@ -312,7 +369,9 @@ def _resolve_plugin_dir_ref(root: Path, ref: str) -> Path:
     return candidates[0].resolve()
 
 
-def _find_plugin_ref(root: Path, plugin_ref: str, repo_root: Path | None = None) -> tuple[str, Path, dict[str, Any]]:
+def _find_plugin_ref(
+    root: Path, plugin_ref: str, repo_root: Path | None = None
+) -> tuple[str, Path, dict[str, Any]]:
     if Path(plugin_ref).is_absolute() or _looks_like_path(plugin_ref):
         path = _resolve_plugin_dir_ref(root, plugin_ref)
         info = validate_plugin_dir(path, repo_root)
@@ -394,7 +453,9 @@ def scaffold_plugin(
     return {"status": "created", "plugin": info["id"], "path": str(target), "valid": True}
 
 
-def list_available_plugins(repo_root: Path | None = None, *, source_filter: str | None = None) -> list[dict[str, Any]]:
+def list_available_plugins(
+    repo_root: Path | None = None, *, source_filter: str | None = None
+) -> list[dict[str, Any]]:
     plugins: list[dict[str, Any]] = []
     for source, path in _available_plugin_dirs(repo_root, source_filter=source_filter):
         try:
@@ -402,13 +463,15 @@ def list_available_plugins(repo_root: Path | None = None, *, source_filter: str 
         except ESAAError as exc:
             plugins.append({"path": str(path), "source": source, "valid": False, "error_code": exc.code})
             continue
-        plugins.append({
-            "id": info["id"],
-            "name": info["name"],
-            "version": info["version"],
-            "source": source,
-            "content_hash": info["content_hash"],
-        })
+        plugins.append(
+            {
+                "id": info["id"],
+                "name": info["name"],
+                "version": info["version"],
+                "source": source,
+                "content_hash": info["content_hash"],
+            }
+        )
     return plugins
 
 
@@ -560,7 +623,8 @@ def activate_roadmap(
 
     lock = _read_roadmaps_lock(root)
     roadmaps = [
-        item for item in lock["roadmaps"]
+        item
+        for item in lock["roadmaps"]
         if not (item["plugin_id"] == plugin_id and item["execution_id"] == execution_id)
     ]
     entry = {
@@ -594,11 +658,17 @@ def deactivate_roadmap(root: Path, plugin_id: str, execution_id: str = "default"
     lock = _read_roadmaps_lock(root)
     before = len(lock["roadmaps"])
     lock["roadmaps"] = [
-        item for item in lock["roadmaps"]
+        item
+        for item in lock["roadmaps"]
         if not (item["plugin_id"] == plugin_id and item["execution_id"] == execution_id)
     ]
     _write_roadmaps_lock(root, lock)
-    return {"status": "deactivated", "removed": before - len(lock["roadmaps"]), "plugin_id": plugin_id, "execution_id": execution_id}
+    return {
+        "status": "deactivated",
+        "removed": before - len(lock["roadmaps"]),
+        "plugin_id": plugin_id,
+        "execution_id": execution_id,
+    }
 
 
 def list_roadmaps(root: Path, *, detail: bool = False, repo_root: Path | None = None) -> list[dict[str, Any]]:
@@ -612,7 +682,9 @@ def list_roadmaps(root: Path, *, detail: bool = False, repo_root: Path | None = 
     return items
 
 
-def _tasks_for_roadmap_entry(root: Path, entry: dict[str, Any], repo_root: Path | None = None) -> list[dict[str, Any]]:
+def _tasks_for_roadmap_entry(
+    root: Path, entry: dict[str, Any], repo_root: Path | None = None
+) -> list[dict[str, Any]]:
     plugin = _installed_plugin(root, entry["plugin_id"])
     plugin_dir = _plugin_dir_from_lock(plugin, repo_root)
     roadmap = _read_json(plugin_dir / entry["roadmap"])

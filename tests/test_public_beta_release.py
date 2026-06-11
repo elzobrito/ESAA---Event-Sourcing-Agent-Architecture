@@ -13,11 +13,24 @@ import pytest
 import yaml
 
 import esaa
-from esaa.bootstrap import GOVERNANCE_TEMPLATE_FILES, bootstrap_workspace
+from esaa.bootstrap import AGENT_GUIDE_TEMPLATE_FILES, GOVERNANCE_TEMPLATE_FILES, bootstrap_workspace
 from esaa.cli import main
 from esaa.constants import PACKAGE_VERSION
 from esaa.errors import ESAAError
 from esaa.service import ESAAService
+
+
+ESSENTIAL_GOVERNANCE_FILES = (
+    "STORAGE_POLICY.yaml",
+    "PROJECTION_SPEC.md",
+    "PARCER_PROFILE.agent-docs.yaml",
+    "PARCER_PROFILE.agent-spec.yaml",
+    "PARCER_PROFILE.agent-impl.yaml",
+    "PARCER_PROFILE.agent-qa.yaml",
+    "PARCER_PROFILE.orchestrator-runtime.yaml",
+)
+
+MINIMAL_AGENT_GUIDANCE = "O ESAA não usa MCP.\nUse a CLI ESAA: python -m esaa.\n"
 
 
 def _run_cli(root: Path, *args: str) -> dict:
@@ -33,14 +46,38 @@ def test_bootstrap_creates_required_governance_files(tmp_path: Path) -> None:
 
     assert result["status"] == "bootstrapped"
     assert result["profile"] == "public"
-    assert sorted(result["files_written"]) == sorted(f".roadmap/{name}" for name in GOVERNANCE_TEMPLATE_FILES)
+    expected_files = [f".roadmap/{name}" for name in GOVERNANCE_TEMPLATE_FILES]
+    expected_files.extend(target for _source, target in AGENT_GUIDE_TEMPLATE_FILES)
+    assert sorted(result["files_written"]) == sorted(expected_files)
+    assert set(ESSENTIAL_GOVERNANCE_FILES) <= set(GOVERNANCE_TEMPLATE_FILES)
     for name in GOVERNANCE_TEMPLATE_FILES:
+        assert (tmp_path / ".roadmap" / name).exists()
+    for name in ESSENTIAL_GOVERNANCE_FILES:
         assert (tmp_path / ".roadmap" / name).exists()
 
     assert not (tmp_path / ".roadmap" / "activity.jsonl").exists()
     assert not (tmp_path / ".roadmap" / "roadmap.json").exists()
     assert not (tmp_path / ".roadmap" / "issues.json").exists()
     assert not (tmp_path / ".roadmap" / "lessons.json").exists()
+
+
+def test_bootstrap_creates_agent_guidance_files(tmp_path: Path) -> None:
+    result = bootstrap_workspace(tmp_path, profile="public")
+
+    assert "README.md" in result["files_written"]
+    assert "AGENTS.md" in result["files_written"]
+    assert ".claude/CLAUDE.md" in result["files_written"]
+    assert (tmp_path / "README.md").is_file()
+    assert (tmp_path / "AGENTS.md").is_file()
+    assert (tmp_path / ".claude" / "CLAUDE.md").is_file()
+    assert not (tmp_path / ".claude" / "settings.local.json").exists()
+
+    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    claude = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+    readme = (tmp_path / "README.md").read_text(encoding="utf-8")
+    assert agents == MINIMAL_AGENT_GUIDANCE
+    assert claude == MINIMAL_AGENT_GUIDANCE
+    assert "# ESAA" in readme
 
 
 def test_bootstrap_refuses_existing_files_without_force(tmp_path: Path) -> None:
@@ -97,14 +134,32 @@ def test_bootstrap_cli_then_init_verify_and_eligible(tmp_path: Path) -> None:
 
 def test_package_data_contains_templates() -> None:
     template_root = resources.files("esaa").joinpath("templates")
+    workspace_root = resources.files("esaa").joinpath("workspace")
+
     assert all(template_root.joinpath(name).is_file() for name in GOVERNANCE_TEMPLATE_FILES)
+    assert all(workspace_root.joinpath(source).is_file() for source, _target in AGENT_GUIDE_TEMPLATE_FILES)
+
+
+def test_packaged_governance_templates_match_canonical_files(repo_root: Path) -> None:
+    template_root = repo_root / "src/esaa/templates"
+    for name in ESSENTIAL_GOVERNANCE_FILES:
+        assert (template_root / name).read_bytes() == (repo_root / ".roadmap" / name).read_bytes()
+
+
+def test_packaged_agent_guides_match_canonical_files(repo_root: Path) -> None:
+    workspace_root = repo_root / "src/esaa/workspace"
+    assert (workspace_root / "AGENTS.md").read_text(encoding="utf-8") == MINIMAL_AGENT_GUIDANCE
+    assert (workspace_root / "CLAUDE.md").read_text(encoding="utf-8") == MINIMAL_AGENT_GUIDANCE
+    assert (workspace_root / "README.md").read_bytes() == (repo_root / "readme.md").read_bytes()
 
 
 def test_pyproject_public_metadata(repo_root: Path) -> None:
     data = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     project = data["project"]
 
-    assert project["version"] == PACKAGE_VERSION
+    assert "version" not in project
+    assert "version" in project.get("dynamic", [])
+    assert data["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "esaa.constants.PACKAGE_VERSION"
     assert project["license"] == "MIT"
     assert project["authors"] == [{"name": "ESAA Contributors"}]
     assert project["urls"]["Homepage"] == "https://github.com/elzobrito/ESAA---Event-Sourcing-Agent-Architecture"
@@ -143,7 +198,7 @@ def test_governance_bundle_versions_are_aligned(repo_root: Path) -> None:
 def test_bootstrap_installed_console_smoke(tmp_path: Path, repo_root: Path) -> None:
     if not (repo_root / "dist").exists():
         return
-    wheels = sorted((repo_root / "dist").glob("esaa_core-0.5.0b1-*.whl"))
+    wheels = sorted((repo_root / "dist").glob(f"esaa_core-{PACKAGE_VERSION}-*.whl"))
     if not wheels:
         return
 
@@ -156,6 +211,8 @@ def test_bootstrap_installed_console_smoke(tmp_path: Path, repo_root: Path) -> N
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     subprocess.run([str(esaa), "--root", str(workspace), "bootstrap", "--profile", "public"], check=True)
+    assert (workspace / "AGENTS.md").is_file()
+    assert (workspace / ".claude" / "CLAUDE.md").is_file()
     subprocess.run([str(esaa), "--root", str(workspace), "init"], check=True)
     verify = subprocess.run([str(esaa), "--root", str(workspace), "verify"], check=True, capture_output=True, text=True)
     assert '"verify_status": "ok"' in verify.stdout

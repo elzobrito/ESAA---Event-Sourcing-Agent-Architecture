@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,9 +23,11 @@ from .plugins import (
     set_roadmap_status,
     validate_plugin,
 )
+from .provenance import ENV_RUNNER_ID
 from .scenarios import run_hotfix_trace
-from .snapshot import compact_event_store, create_snapshot
 from .service import ESAAService
+from .snapshot import compact_event_store, create_snapshot
+from .store import init_hash_chain, verify_hash_chain
 from .vocabulary import vocabulary_payload
 
 
@@ -93,22 +96,26 @@ def _plugin_status(root: Path, detail: bool = False, plugin_filter: str | None =
             if live is not None:
                 in_projection += 1
             if detail:
-                items.append({
-                    "task_id": tid,
-                    "title": t.get("title", ""),
-                    "kind": t.get("task_kind"),
-                    "planned_status": planned,
-                    "live_status": live,
-                })
+                items.append(
+                    {
+                        "task_id": tid,
+                        "title": t.get("title", ""),
+                        "kind": t.get("task_kind"),
+                        "planned_status": planned,
+                        "live_status": live,
+                    }
+                )
 
-        plugins.append({
-            "plugin_file": str(path.relative_to(root)).replace("\\", "/"),
-            "tasks_declared": len(tasks),
-            "in_projection": in_projection,
-            "by_live_status": by_live_status,
-            "by_planned_status": by_planned_status,
-            **({"tasks": items} if detail else {}),
-        })
+        plugins.append(
+            {
+                "plugin_file": str(path.relative_to(root)).replace("\\", "/"),
+                "tasks_declared": len(tasks),
+                "in_projection": in_projection,
+                "by_live_status": by_live_status,
+                "by_planned_status": by_planned_status,
+                **({"tasks": items} if detail else {}),
+            }
+        )
 
     return {
         "root": str(root),
@@ -121,6 +128,11 @@ def _plugin_status(root: Path, detail: bool = False, plugin_filter: str | None =
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="esaa", description="ESAA deterministic orchestrator core")
     parser.add_argument("--root", default=".", help="project root path")
+    parser.add_argument(
+        "--runner",
+        default=None,
+        help="runner identity stamped on every event (G08); overrides ESAA_RUNNER_ID",
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -140,7 +152,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     cmd_run = sub.add_parser("run", help="execute orchestration steps (mock adapter)")
     cmd_run.add_argument("--steps", type=int, default=1)
-    cmd_run.add_argument("--parallel", type=int, default=1, help="number of independent tasks to dispatch per wave")
+    cmd_run.add_argument(
+        "--parallel", type=int, default=1, help="number of independent tasks to dispatch per wave"
+    )
     cmd_run.add_argument("--adapter", choices=["mock", "http"], default="mock")
     cmd_run.add_argument("--llm-url", default=None, help="HTTP adapter endpoint (or ESAA_LLM_URL)")
     cmd_run.add_argument("--llm-token", default=None, help="HTTP adapter bearer token")
@@ -153,7 +167,9 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_run.add_argument("--dry-run", action="store_true")
 
     cmd_submit = sub.add_parser("submit", help="validate and apply an agent.result JSON")
-    cmd_submit.add_argument("file", nargs="?", default="-", help="path to agent.result JSON file (default: stdin)")
+    cmd_submit.add_argument(
+        "file", nargs="?", default="-", help="path to agent.result JSON file (default: stdin)"
+    )
     cmd_submit.add_argument("--actor", required=True, help="agent identity (e.g. agent-spec, claude-code)")
     cmd_submit.add_argument("--dry-run", action="store_true", help="validate without persisting")
 
@@ -203,6 +219,13 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_task_create.add_argument("--output", action="append", dest="outputs", default=None)
     cmd_task_create.add_argument("--depends-on", action="append", dest="depends_on", default=None)
     cmd_task_create.add_argument("--target", action="append", dest="targets", default=None)
+    cmd_task_create.add_argument(
+        "--boundary-grant",
+        action="append",
+        dest="boundary_grant",
+        default=None,
+        help="extra fnmatch write pattern granted to this task only (operator authority; T-2070)",
+    )
     cmd_task_create.add_argument("--dry-run", action="store_true")
 
     cmd_issue = sub.add_parser("issue", help="deterministic issue commands")
@@ -235,15 +258,26 @@ def _build_parser() -> argparse.ArgumentParser:
     cmd_activity = sub.add_parser("activity", help="activity.jsonl administrative commands")
     activity_sub = cmd_activity.add_subparsers(dest="activity_command", required=True)
     cmd_activity_clear = activity_sub.add_parser("clear", help="backup and clear .roadmap/activity.jsonl")
-    cmd_activity_clear.add_argument("--force", action="store_true", help="required to truncate activity.jsonl")
+    cmd_activity_clear.add_argument(
+        "--force", action="store_true", help="required to truncate activity.jsonl"
+    )
     cmd_activity_clear.add_argument("--dry-run", action="store_true", help="report what would be cleared")
-    cmd_activity_clear.add_argument("--backup-dir", default=".roadmap/backups", help="backup directory before clearing")
+    cmd_activity_clear.add_argument(
+        "--backup-dir", default=".roadmap/backups", help="backup directory before clearing"
+    )
 
     cmd_process = sub.add_parser("process", help="process all pending files from .roadmap/inbox/")
-    cmd_process.add_argument("--dry-run", action="store_true", help="validate without persisting or moving files")
+    cmd_process.add_argument(
+        "--dry-run", action="store_true", help="validate without persisting or moving files"
+    )
 
     sub.add_parser("project", help="reproject read-models from event store")
-    sub.add_parser("verify", help="verify projection consistency")
+    cmd_verify = sub.add_parser("verify", help="verify projection consistency")
+    cmd_verify.add_argument("--chain", action="store_true", help="verify event-store hash chain")
+    cmd_chain = sub.add_parser("chain", help="event-store hash chain commands")
+    chain_sub = cmd_chain.add_subparsers(dest="chain_command", required=True)
+    cmd_chain_init = chain_sub.add_parser("init", help="append a chain.anchor event")
+    cmd_chain_init.add_argument("--force", action="store_true")
     sub.add_parser("eligible", help="list eligible tasks and parallel groups")
     sub.add_parser("metrics", help="emit structured runtime metrics")
 
@@ -251,8 +285,12 @@ def _build_parser() -> argparse.ArgumentParser:
     plugin_sub = cmd_plugin.add_subparsers(dest="plugin_command", required=True)
     cmd_plugin_list = plugin_sub.add_parser("list", help="list installed or available plugins")
     cmd_plugin_list.add_argument("--available", action="store_true")
-    cmd_plugin_list.add_argument("--bundled", action="store_true", help="when listing available plugins, show bundled only")
-    cmd_plugin_list.add_argument("--external", action="store_true", help="when listing available plugins, show external catalog only")
+    cmd_plugin_list.add_argument(
+        "--bundled", action="store_true", help="when listing available plugins, show bundled only"
+    )
+    cmd_plugin_list.add_argument(
+        "--external", action="store_true", help="when listing available plugins, show external catalog only"
+    )
     cmd_plugin_new = plugin_sub.add_parser("new", help="scaffold a plugin directory package")
     cmd_plugin_new.add_argument("plugin_id")
     cmd_plugin_new.add_argument("--directory", default=None)
@@ -291,17 +329,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="show planned-vs-projected status per roadmap plugin",
     )
     cmd_plugin_status.add_argument(
-        "--detail", action="store_true",
+        "--detail",
+        action="store_true",
         help="include per-task list (task_id, title, projected status)",
     )
     cmd_plugin_status.add_argument(
-        "--plugin", default=None,
+        "--plugin",
+        default=None,
         help="filter to one plugin filename (e.g. roadmap.sso-client.json)",
     )
 
     cmd_effects = sub.add_parser("effects", help="file effect recovery commands")
     effects_sub = cmd_effects.add_subparsers(dest="effects_command", required=True)
-    cmd_effects_recover = effects_sub.add_parser("recover", help="reapply missing file effects from artifacts")
+    cmd_effects_recover = effects_sub.add_parser(
+        "recover", help="reapply missing file effects from artifacts"
+    )
     cmd_effects_recover.add_argument("--dry-run", action="store_true")
 
     cmd_runner = sub.add_parser("runner", help="external runner telemetry commands")
@@ -337,8 +379,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     cmd_snapshot = sub.add_parser("snapshot", help="write a projection checkpoint")
     cmd_snapshot.add_argument("--before", type=int, required=True, help="include events with event_seq <= N")
-    cmd_snapshot.add_argument("--compact", action="store_true", help="also archive included events beside the snapshot")
-    cmd_snapshot.add_argument("--dry-run", action="store_true", help="show snapshot/compaction plan without writing")
+    cmd_snapshot.add_argument(
+        "--compact", action="store_true", help="also archive included events beside the snapshot"
+    )
+    cmd_snapshot.add_argument(
+        "--dry-run", action="store_true", help="show snapshot/compaction plan without writing"
+    )
 
     cmd_replay = sub.add_parser("replay", help="rebuild state until event id/seq")
     cmd_replay.add_argument("--until", default=None, help="event_seq (number) or event_id")
@@ -348,6 +394,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    if getattr(args, "runner", None):
+        os.environ[ENV_RUNNER_ID] = args.runner  # G08: precedencia CLI > env > default
     root = Path(args.root).resolve()
     adapter = None
     if getattr(args, "command", None) == "run" and getattr(args, "adapter", "mock") == "http":
@@ -423,6 +471,7 @@ def main(argv: list[str] | None = None) -> int:
                 outputs=args.outputs,
                 depends_on=args.depends_on,
                 targets=args.targets,
+                boundary_grant=args.boundary_grant,
                 dry_run=args.dry_run,
             )
         elif args.command == "issue" and args.issue_command == "report":
@@ -461,7 +510,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "project":
             result = service.project()
         elif args.command == "verify":
-            result = service.verify()
+            result = verify_hash_chain(root) if getattr(args, "chain", False) else service.verify()
+        elif args.command == "chain" and args.chain_command == "init":
+            result = init_hash_chain(root, force=args.force)
         elif args.command == "eligible":
             result = service.eligible()
         elif args.command == "metrics":
@@ -475,7 +526,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.external:
                 source_filter = "external"
             result = {
-                "plugins": list_available_plugins(root, source_filter=source_filter) if args.available else list_installed_plugins(root),
+                "plugins": (
+                    list_available_plugins(root, source_filter=source_filter)
+                    if args.available
+                    else list_installed_plugins(root)
+                ),
             }
         elif args.command == "plugin" and args.plugin_command == "new":
             result = scaffold_plugin(root, args.plugin_id, directory=args.directory)
@@ -534,7 +589,9 @@ def main(argv: list[str] | None = None) -> int:
                 }
             result = service.record_runner_metrics(payload, dry_run=args.dry_run)
         elif args.command == "scenario" and args.scenario_command == "hotfix":
-            result = run_hotfix_trace(root, target_root=root if args.current else None, issue_id=args.issue_id)
+            result = run_hotfix_trace(
+                root, target_root=root if args.current else None, issue_id=args.issue_id
+            )
         elif args.command == "vocabulary":
             result = vocabulary_payload(profile=args.profile)
         elif args.command == "snapshot":

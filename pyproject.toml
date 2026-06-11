@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "esaa-core"
-version = "0.5.0b1"
+dynamic = ["version"]
 description = "ESAA deterministic orchestrator core"
 readme = "readme.md"
 requires-python = ">=3.11"
@@ -35,6 +35,9 @@ dev = [
   "pytest>=8.2.0",
   "build>=1.2.0",
   "twine>=5.1.0",
+  "ruff>=0.4.0",
+  "black>=24.0",
+  "mypy>=1.10",
 ]
 
 [project.scripts]
@@ -43,8 +46,31 @@ esaa = "esaa.cli:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+# QUA-02: fonte unica de versao - src/esaa/constants.py::PACKAGE_VERSION
+[tool.setuptools.dynamic]
+version = {attr = "esaa.constants.PACKAGE_VERSION"}
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-esaa = ["templates/*"]
+esaa = ["templates/*", "workspace/*"]
+
+# QUA-01: formatacao e lint - escopo adotado gradualmente (ver docs/spec/G01-hygiene-tooling-ci.md)
+[tool.black]
+line-length = 110
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]  # comprimento de linha e responsabilidade do black
+
+# QUA-01: mypy pragmatico (job nao-bloqueante no CI inicialmente)
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = false

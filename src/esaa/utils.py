@@ -25,5 +25,7 @@ def sha256_hex(value: Any) -> str:
 
 
 def normalize_rel_path(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
-
+    norm = path.replace("\\", "/")
+    while norm.startswith("./"):
+        norm = norm[2:]
+    return norm

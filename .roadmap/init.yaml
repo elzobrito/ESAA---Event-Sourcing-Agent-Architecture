@@ -2,7 +2,7 @@
 # MINI_PARCER_ESAA_INIT_v0.4.1
 # Prompt inicial de execução canônica para agentes ESAA
 # Alinhado a AGENT_CONTRACT.yaml v0.4.1, ORCHESTRATOR_CONTRACT.yaml v0.4.1,
-# agent_result.schema.json v0.4.1 e PARCER_PROFILE_agent-docs.yaml v0.4.1
+# agent_result.schema.json v0.4.1 e PARCER_PROFILE.agent-docs.yaml v0.4.1
 # ==========================================================
 
 meta:
