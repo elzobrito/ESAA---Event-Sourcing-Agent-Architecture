@@ -85,6 +85,17 @@ be used with pinned package versions, backups, snapshots, `verify`, and
 If the installed `esaa` script is not on your PATH, use `python -m esaa`; it is
 the most portable invocation on Windows, Linux, and macOS.
 
+## Usage Guides
+
+- [Primeiros passos](docs/guides/esaa-getting-started.md) - do bootstrap ao
+  primeiro ciclo `todo -> in_progress -> review -> done`.
+- [Referência do CLI](docs/guides/esaa-cli-reference.md) - subcomandos,
+  sintaxes e exemplos operacionais do `esaa`.
+- [Codex e Claude Code como runners](docs/guides/esaa-runners-codex-claude-code.md) -
+  provenance `--runner`, `dispatch-context`, envelopes e métricas.
+- [Por que usar o ESAA](docs/guides/esaa-why.md) - problemas resolvidos por
+  cada recurso do protocolo.
+
 ## Public Beta Status
 
 Current package: `esaa-core 0.5.0b9`.

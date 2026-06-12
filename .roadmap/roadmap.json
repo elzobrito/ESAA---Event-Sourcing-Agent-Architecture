@@ -7,11 +7,11 @@
     "run": {
       "run_id": null,
       "status": "success",
-      "last_event_seq": 81,
-      "projection_hash_sha256": "634239181028b0d385db7a12370092d393d1e3458e10cac266c619be6649d64c",
+      "last_event_seq": 147,
+      "projection_hash_sha256": "60e24e227f63e1b42e4299420daf76871253925d601662f39071692c899475a8",
       "verify_status": "ok"
     },
-    "updated_at": "2026-06-11T22:12:03Z"
+    "updated_at": "2026-06-12T16:13:53Z"
   },
   "project": {
     "name": "esaa-core",
@@ -202,16 +202,166 @@
         ]
       },
       "completed_at": "2026-06-11T22:12:03Z"
+    },
+    {
+      "task_id": "T-DOCS-USAGE-GUIDE",
+      "task_kind": "spec",
+      "title": "Documentar recursos do ESAA e guia de uso com Codex/Claude Code",
+      "description": "Produzir documentacao de uso do ESAA cobrindo: (1) referencia de cada subcomando do CLI esaa (bootstrap, init, run, submit, claim, complete, review, state, dispatch-context, reject, task, issue, hotfix, activity, process, project, verify, chain, eligible, metrics, input, plugin, roadmap, plugin-status, effects, runner, scenario, vocabulary, snapshot, replay) com proposito, sintaxe e exemplo; (2) guia pratico de como usar o ESAA num projeto novo (bootstrap/init ate o ciclo todo->in_progress->review->done); (3) guia de como operar Codex e Claude Code como runners externos (provenance --runner, dispatch-context, input commands/runtime_capabilities, runner metrics, envelope agent.result e two-step claim/complete); (4) motivacao: porque usar o ESAA e quais problemas cada recurso resolve (tabela recurso/para-que-serve/problema-que-resolve).",
+      "status": "done",
+      "depends_on": [],
+      "targets": [
+        "documentation"
+      ],
+      "outputs": {
+        "files": [
+          "docs/guides/esaa-cli-reference.md",
+          "docs/guides/esaa-getting-started.md",
+          "docs/guides/esaa-runners-codex-claude-code.md",
+          "docs/guides/esaa-why.md"
+        ]
+      },
+      "immutability": {
+        "done_is_immutable": true
+      },
+      "assigned_to": "agent-spec",
+      "started_at": "2026-06-12T15:34:55Z",
+      "verification": {
+        "checks": [
+          "docs/guides/esaa-cli-reference.md documenta os 29 subcomandos do esaa --help real (0.5.0b9) com proposito, sintaxe e exemplos, incluindo state, process, scenario, vocabulary e reject",
+          "docs/guides/esaa-getting-started.md cobre instalacao via pip, bootstrap/init e o ciclo completo todo->in_progress->review->done com exemplos executaveis",
+          "docs/guides/esaa-runners-codex-claude-code.md cobre provenance --runner, input commands/runtime_capabilities, dispatch-context, envelope agent.result, two-step claim/complete, gates WG-001..005 e runner metrics",
+          "docs/guides/esaa-why.md apresenta a tabela recurso/para-que-serve/problema-que-resolve cobrindo todos os recursos do core"
+        ]
+      },
+      "completed_at": "2026-06-12T15:40:04Z"
+    },
+    {
+      "task_id": "HF-ISS-DOCS-USAGE-GUIDE-IMPROVE",
+      "task_kind": "impl",
+      "title": "Hotfix for ISS-DOCS-USAGE-GUIDE-IMPROVE",
+      "description": "Apply a minimal hotfix to resolve issue ISS-DOCS-USAGE-GUIDE-IMPROVE without regressing immutable done tasks.",
+      "status": "done",
+      "depends_on": [],
+      "targets": [
+        "ISS-DOCS-USAGE-GUIDE-IMPROVE"
+      ],
+      "outputs": {
+        "files": [
+          "src/hotfix/HF-ISS-DOCS-USAGE-GUIDE-IMPROVE.txt"
+        ]
+      },
+      "immutability": {
+        "done_is_immutable": true
+      },
+      "is_hotfix": true,
+      "issue_id": "ISS-DOCS-USAGE-GUIDE-IMPROVE",
+      "fixes": "T-DOCS-USAGE-GUIDE",
+      "scope_patch": [
+        "src/hotfix/"
+      ],
+      "required_verification": [
+        "unit",
+        "regression"
+      ],
+      "baseline_id": "B-000",
+      "assigned_to": "agent-hotfix",
+      "started_at": "2026-06-12T16:12:26Z",
+      "verification": {
+        "checks": [
+          "unit: marcador de hotfix criado dentro de src/hotfix/ conforme scope_patch",
+          "regression: T-DOCS-USAGE-GUIDE-IMPROVE e HF-ISS-DOCS-USAGE-GUIDE-PACKAGE-SYNC estao done e preservam a task original imutavel"
+        ]
+      },
+      "completed_at": "2026-06-12T16:12:46Z"
+    },
+    {
+      "task_id": "T-DOCS-USAGE-GUIDE-IMPROVE",
+      "task_kind": "spec",
+      "title": "Melhorar guias de uso do ESAA",
+      "description": "Corrigir a issue ISS-DOCS-USAGE-GUIDE-IMPROVE expandindo sintaxes e exemplos reais dos comandos operacionais, padronizando runner em comandos que escrevem eventos, melhorando a legibilidade do guia de motivacao e linkando docs/guides no README principal.",
+      "status": "done",
+      "depends_on": [],
+      "targets": [
+        "documentation",
+        "ISS-DOCS-USAGE-GUIDE-IMPROVE"
+      ],
+      "outputs": {
+        "files": [
+          "docs/guides/esaa-cli-reference.md",
+          "docs/guides/esaa-getting-started.md",
+          "docs/guides/esaa-runners-codex-claude-code.md",
+          "docs/guides/esaa-why.md",
+          "readme.md"
+        ]
+      },
+      "immutability": {
+        "done_is_immutable": true
+      },
+      "boundary_grant": [
+        "readme.md"
+      ],
+      "assigned_to": "agent-spec",
+      "started_at": "2026-06-12T15:59:06Z",
+      "verification": {
+        "checks": [
+          "edits com base_sha256 atual preparados para docs/guides e readme.md",
+          "sintaxes conferidas contra python -m esaa --help e subcommands --help",
+          "readme.md recebe links para os quatro guias de uso"
+        ]
+      },
+      "issue_id": "ISS-DOCS-USAGE-GUIDE-IMPROVE",
+      "fixes": "T-DOCS-USAGE-GUIDE",
+      "completed_at": "2026-06-12T16:08:28Z"
+    },
+    {
+      "task_id": "HF-ISS-DOCS-USAGE-GUIDE-PACKAGE-SYNC",
+      "task_kind": "impl",
+      "title": "Hotfix for ISS-DOCS-USAGE-GUIDE-PACKAGE-SYNC",
+      "description": "Apply a minimal hotfix to resolve issue ISS-DOCS-USAGE-GUIDE-PACKAGE-SYNC without regressing immutable done tasks.",
+      "status": "done",
+      "depends_on": [],
+      "targets": [
+        "ISS-DOCS-USAGE-GUIDE-PACKAGE-SYNC"
+      ],
+      "outputs": {
+        "files": [
+          "src/hotfix/HF-ISS-DOCS-USAGE-GUIDE-PACKAGE-SYNC.txt"
+        ]
+      },
+      "immutability": {
+        "done_is_immutable": true
+      },
+      "is_hotfix": true,
+      "issue_id": "ISS-DOCS-USAGE-GUIDE-PACKAGE-SYNC",
+      "fixes": "T-DOCS-USAGE-GUIDE-IMPROVE",
+      "scope_patch": [
+        "src/esaa/workspace/README.md"
+      ],
+      "required_verification": [
+        "unit",
+        "regression"
+      ],
+      "baseline_id": "B-000",
+      "assigned_to": "agent-hotfix",
+      "started_at": "2026-06-12T16:11:30Z",
+      "verification": {
+        "checks": [
+          "unit: src/esaa/workspace/README.md recebe exatamente o conteudo de readme.md",
+          "regression: cobre falha de tests/test_public_beta_release.py::test_packaged_agent_guides_match_canonical_files"
+        ]
+      },
+      "completed_at": "2026-06-12T16:12:03Z"
     }
   ],
   "indexes": {
     "by_status": {
-      "done": 6
+      "done": 10
     },
     "by_kind": {
-      "impl": 2,
+      "impl": 4,
       "qa": 1,
-      "spec": 3
+      "spec": 5
     }
   }
 }
